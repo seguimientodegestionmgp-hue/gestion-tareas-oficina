@@ -258,7 +258,7 @@ export default function Home() {
                 </thead>
                 <tbody>
                   {filtered.map((t, idx) => (
-                    <tr key={t.id} className={`border-t hover:bg-gray-50 ${t.estado==='Realizada' ? 'opacity-60' : ''}`}>
+                    <tr key={t.id} onClick={() => openEdit(t)} className={`border-t hover:bg-gray-50 cursor-pointer ${t.estado==='Realizada' ? 'opacity-60' : ''}`}>
                       <td className="px-3 py-2 text-gray-400 text-xs">{idx+1}</td>
                       <td className="px-3 py-2 whitespace-nowrap max-w-32 truncate">{t.reunion}</td>
                       <td className="px-3 py-2 max-w-56">
@@ -280,7 +280,7 @@ export default function Home() {
                         {t.observaciones ? (
                           <div>
                             <span className={expandedObs===t.id ? '' : 'line-clamp-2'}>{t.observaciones}</span>
-                            {t.observaciones.length > 80 && (
+                            {t.observaciones.length > 0 && (
                               <button onClick={() => setExpandedObs(expandedObs===t.id ? null : t.id)}
                                 className="text-blue-500 text-xs mt-0.5 hover:underline">
                                 {expandedObs===t.id ? 'Ver menos' : 'Ver más'}
@@ -435,5 +435,4 @@ export default function Home() {
       )}
     </div>
   )
-
 }
