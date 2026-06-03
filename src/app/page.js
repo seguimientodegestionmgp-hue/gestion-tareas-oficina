@@ -11,10 +11,10 @@ const PRIORIDADES = ['Alta', 'Media', 'Baja']
 const ESTADOS = ['Pendiente', 'En curso', 'Realizada', 'Bloqueada']
 
 const ESTADO_COLORS = {
-  'Pendiente':  'bg-yellow-100 text-yellow-800',
-  'En curso':   'bg-blue-100 text-blue-800',
-  'Realizada':  'bg-green-100 text-green-800',
-  'Bloqueada':  'bg-red-100 text-red-800',
+  'Pendiente': 'bg-yellow-100 text-yellow-800',
+  'En curso':  'bg-blue-100 text-blue-800',
+  'Realizada': 'bg-green-100 text-green-800',
+  'Bloqueada': 'bg-red-100 text-red-800',
 }
 const PRIO_COLORS = {
   'Alta':  'bg-red-100 text-red-800',
@@ -35,12 +35,18 @@ export default function Home() {
   const [filterEstado, setFilterEstado] = useState('')
   const [filterPrio, setFilterPrio] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [showAvancesModal, setShowAvancesModal] = useState(false)
   const [editTarea, setEditTarea] = useState(null)
+  const [tareaActual, setTareaActual] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('tareas')
   const [expandedObs, setExpandedObs] = useState(null)
   const [error, setError] = useState(null)
+  const [avances, setAvances] = useState([])
+  const [loadingAvances, setLoadingAvances] = useState(false)
+  const [nuevoAvance, setNuevoAvance] = useState({ fecha: new Date().toISOString().split('T')[0], descripcion: '' })
+  const [savingAvance, setSavingAvance] = useState(false)
 
   const fetchTareas = useCallback(async () => {
     setLoading(true)
@@ -48,16 +54,23 @@ export default function Home() {
       .from('tareas')
       .select('*')
       .order('id', { ascending: true })
-    if (error) {
-      console.error('Error fetching:', error)
-      setError(error.message)
-    } else {
-      setTareas(data || [])
-    }
+    if (error) setError(error.message)
+    else setTareas(data || [])
     setLoading(false)
   }, [])
 
   useEffect(() => { fetchTareas() }, [fetchTareas])
+
+  const fetchAvances = async (tareaId) => {
+    setLoadingAvances(true)
+    const { data } = await supabase
+      .from('avances')
+      .select('*')
+      .eq('tarea_id', tareaId)
+      .order('fecha', { ascending: false })
+    setAvances(data || [])
+    setLoadingAvances(false)
+  }
 
   const filtered = tareas.filter(t => {
     const q = search.toLowerCase()
@@ -112,6 +125,14 @@ export default function Home() {
   const openNew = () => { setForm(emptyForm); setEditTarea(null); setError(null); setShowModal(true) }
   const openEdit = (t) => { setForm({...t, fecha_venc: t.fecha_venc||'', fecha_real: t.fecha_real||''}); setEditTarea(t.id); setError(null); setShowModal(true) }
 
+  const openAvances = (e, t) => {
+    e.stopPropagation()
+    setTareaActual(t)
+    setNuevoAvance({ fecha: new Date().toISOString().split('T')[0], descripcion: '' })
+    fetchAvances(t.id)
+    setShowAvancesModal(true)
+  }
+
   const handleSave = async () => {
     setSaving(true)
     setError(null)
@@ -134,17 +155,36 @@ export default function Home() {
       }
 
       if (result.error) {
-        console.error('Save error:', result.error)
         setError(result.error.message)
       } else {
         setShowModal(false)
         fetchTareas()
       }
     } catch (e) {
-      console.error('Exception:', e)
       setError(e.message)
     }
     setSaving(false)
+  }
+
+  const handleSaveAvance = async () => {
+    if (!nuevoAvance.descripcion.trim()) return
+    setSavingAvance(true)
+    const { error } = await supabase.from('avances').insert([{
+      tarea_id: tareaActual.id,
+      fecha: nuevoAvance.fecha,
+      descripcion: nuevoAvance.descripcion.trim()
+    }])
+    if (!error) {
+      setNuevoAvance({ fecha: new Date().toISOString().split('T')[0], descripcion: '' })
+      fetchAvances(tareaActual.id)
+    }
+    setSavingAvance(false)
+  }
+
+  const handleDeleteAvance = async (id) => {
+    if (!confirm('¿Eliminar este avance?')) return
+    await supabase.from('avances').delete().eq('id', id)
+    fetchAvances(tareaActual.id)
   }
 
   const handleDelete = async (id) => {
@@ -153,7 +193,8 @@ export default function Home() {
     fetchTareas()
   }
 
-  const handleEstadoChange = async (id, estado) => {
+  const handleEstadoChange = async (e, id, estado) => {
+    e.stopPropagation()
     const upd = { estado }
     if (estado === 'Realizada') upd.fecha_real = new Date().toISOString().split('T')[0]
     else upd.fecha_real = null
@@ -161,9 +202,12 @@ export default function Home() {
     fetchTareas()
   }
 
+  const formatFecha = (f) => f ? new Date(f+'T00:00:00').toLocaleDateString('es-AR') : '—'
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-blue-700 text-white px-6 py-4 shadow" style={{position:"sticky",top:0,zIndex:40}}>
+      {/* Header sticky */}
+      <div className="bg-blue-700 text-white px-6 py-4 shadow" style={{position:'sticky',top:0,zIndex:40}}>
         <div className="max-w-screen-xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">📋 Gestión de Tareas y Reuniones</h1>
@@ -176,7 +220,8 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="bg-white border-b" style={{position:"sticky",top:"64px",zIndex:30}}>
+      {/* Tabs sticky */}
+      <div className="bg-white border-b" style={{position:'sticky',top:'64px',zIndex:30}}>
         <div className="max-w-screen-xl mx-auto px-6 flex gap-1">
           {[['tareas','📋 Tareas'],['resumen','📊 Resumen']].map(([key,label]) => (
             <button key={key} onClick={() => setActiveTab(key)}
@@ -190,6 +235,7 @@ export default function Home() {
       <div className="max-w-screen-xl mx-auto px-6 py-6">
 
         {activeTab === 'tareas' && (<>
+          {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
             {[
               ['Total', total, 'bg-blue-50 text-blue-800'],
@@ -206,6 +252,7 @@ export default function Home() {
             ))}
           </div>
 
+          {/* Buscador */}
           <div className="bg-white rounded-xl shadow-sm border p-4 mb-4">
             <div className="flex flex-wrap gap-3 items-center">
               <div className="flex-1 min-w-48">
@@ -233,13 +280,12 @@ export default function Home() {
               </select>
               {(search || filterEstado || filterPrio) && (
                 <button onClick={() => { setSearch(''); setFilterEstado(''); setFilterPrio('') }}
-                  className="text-sm text-gray-500 hover:text-red-500 border rounded-lg px-3 py-2">
-                  ✕ Limpiar
-                </button>
+                  className="text-sm text-gray-500 hover:text-red-500 border rounded-lg px-3 py-2">✕ Limpiar</button>
               )}
             </div>
           </div>
 
+          {/* Tabla */}
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
             {loading ? (
               <div className="text-center py-16 text-gray-400">Cargando...</div>
@@ -251,14 +297,15 @@ export default function Home() {
               <table className="w-full text-sm">
                 <thead className="bg-blue-700 text-white">
                   <tr>
-                    {['#','Reunión','Tarea','Responsable','Prioridad','Estado','F.Venc','F.Real','Observaciones','Área',''].map((h,i) => (
+                    {['#','Reunión','Tarea','Responsable','Prioridad','Estado','F.Venc','F.Real','Observaciones','Área','Avances',''].map((h,i) => (
                       <th key={i} className="px-3 py-3 text-left font-medium whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((t, idx) => (
-                    <tr key={t.id} onClick={() => openEdit(t)} className={`border-t hover:bg-gray-50 cursor-pointer ${t.estado==='Realizada' ? 'opacity-60' : ''}`}>
+                    <tr key={t.id} onClick={() => openEdit(t)}
+                      className={`border-t hover:bg-gray-50 cursor-pointer ${t.estado==='Realizada' ? 'opacity-60' : ''}`}>
                       <td className="px-3 py-2 text-gray-400 text-xs">{idx+1}</td>
                       <td className="px-3 py-2 whitespace-nowrap max-w-32 truncate">{t.reunion}</td>
                       <td className="px-3 py-2 max-w-56">
@@ -268,15 +315,15 @@ export default function Home() {
                       <td className="px-3 py-2">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${PRIO_COLORS[t.prioridad]||''}`}>{t.prioridad}</span>
                       </td>
-                      <td className="px-3 py-2">
-                        <select value={t.estado||''} onChange={e => handleEstadoChange(t.id, e.target.value)}
+                      <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                        <select value={t.estado||''} onChange={e => handleEstadoChange(e, t.id, e.target.value)}
                           className={`text-xs font-semibold rounded-full px-2 py-0.5 border-0 cursor-pointer ${ESTADO_COLORS[t.estado]||''}`}>
                           {ESTADOS.map(e => <option key={e}>{e}</option>)}
                         </select>
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-xs">{t.fecha_venc ? new Date(t.fecha_venc+'T00:00:00').toLocaleDateString('es-AR') : '—'}</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-xs">{t.fecha_real ? new Date(t.fecha_real+'T00:00:00').toLocaleDateString('es-AR') : '—'}</td>
-                      <td className="px-3 py-2 max-w-48">
+                      <td className="px-3 py-2 whitespace-nowrap text-xs">{formatFecha(t.fecha_venc)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs">{formatFecha(t.fecha_real)}</td>
+                      <td className="px-3 py-2 max-w-48" onClick={e => e.stopPropagation()}>
                         {t.observaciones ? (
                           <div>
                             <span className={expandedObs===t.id ? '' : 'line-clamp-2'}>{t.observaciones}</span>
@@ -290,7 +337,12 @@ export default function Home() {
                         ) : '—'}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">{t.area}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">
+                      <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                        <button onClick={e => openAvances(e, t)}
+                          className="bg-green-100 hover:bg-green-200 text-green-700 font-bold rounded-full w-7 h-7 flex items-center justify-center text-lg leading-none"
+                          title="Ver/agregar avances">+</button>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap" onClick={e => e.stopPropagation()}>
                         <div className="flex gap-1">
                           <button onClick={() => openEdit(t)} className="text-blue-500 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50 text-xs">✏️</button>
                           <button onClick={() => handleDelete(t.id)} className="text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 text-xs">🗑️</button>
@@ -370,6 +422,7 @@ export default function Home() {
         )}
       </div>
 
+      {/* Modal nueva/editar tarea */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-screen overflow-y-auto">
@@ -429,6 +482,81 @@ export default function Home() {
                 className="bg-blue-700 text-white rounded-lg px-5 py-2 text-sm font-semibold hover:bg-blue-800 disabled:opacity-50">
                 {saving ? 'Guardando...' : 'Guardar'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal avances */}
+      {showAvancesModal && tareaActual && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-screen overflow-y-auto">
+            <div className="bg-green-700 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
+              <div>
+                <h2 className="font-bold text-lg">📈 Avances</h2>
+                <p className="text-green-200 text-sm truncate max-w-sm">{tareaActual.tarea}</p>
+              </div>
+              <button onClick={() => setShowAvancesModal(false)} className="text-white hover:text-green-200 text-xl">✕</button>
+            </div>
+
+            <div className="p-6">
+              {/* Formulario nuevo avance */}
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
+                <h3 className="font-semibold text-green-800 mb-3 text-sm">+ Agregar nuevo avance</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Fecha</label>
+                    <input type="date" value={nuevoAvance.fecha}
+                      onChange={e => setNuevoAvance({...nuevoAvance, fecha: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Descripción del avance</label>
+                    <div className="flex gap-2">
+                      <input type="text" value={nuevoAvance.descripcion}
+                        onChange={e => setNuevoAvance({...nuevoAvance, descripcion: e.target.value})}
+                        onKeyDown={e => e.key === 'Enter' && handleSaveAvance()}
+                        placeholder="Describí el avance realizado..."
+                        className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+                      <button onClick={handleSaveAvance} disabled={savingAvance || !nuevoAvance.descripcion.trim()}
+                        className="bg-green-700 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-green-800 disabled:opacity-50 whitespace-nowrap">
+                        {savingAvance ? '...' : 'Agregar'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Lista de avances */}
+              <h3 className="font-semibold text-gray-700 mb-3 text-sm">Historial de avances</h3>
+              {loadingAvances ? (
+                <div className="text-center py-8 text-gray-400">Cargando...</div>
+              ) : avances.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 border rounded-xl">
+                  No hay avances registrados. ¡Agregá el primero!
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {avances.map((a, i) => (
+                    <div key={a.id} className="flex gap-3 items-start">
+                      <div className="flex flex-col items-center">
+                        <div className="w-3 h-3 bg-green-500 rounded-full mt-1 flex-shrink-0"></div>
+                        {i < avances.length - 1 && <div className="w-0.5 bg-green-200 flex-1 mt-1" style={{minHeight:'24px'}}></div>}
+                      </div>
+                      <div className="flex-1 bg-gray-50 rounded-xl p-3 border">
+                        <div className="flex justify-between items-start">
+                          <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                            {formatFecha(a.fecha)}
+                          </span>
+                          <button onClick={() => handleDeleteAvance(a.id)}
+                            className="text-gray-300 hover:text-red-500 text-xs ml-2">🗑️</button>
+                        </div>
+                        <p className="text-sm text-gray-700 mt-2">{a.descripcion}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
