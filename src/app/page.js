@@ -47,6 +47,7 @@ export default function Home() {
   const [loadingAvances, setLoadingAvances] = useState(false)
   const [nuevoAvance, setNuevoAvance] = useState({ fecha: new Date().toISOString().split('T')[0], descripcion: '' })
   const [savingAvance, setSavingAvance] = useState(false)
+  const [conteoAvances, setConteoAvances] = useState({})
 
   const fetchTareas = useCallback(async () => {
     setLoading(true)
@@ -55,7 +56,18 @@ export default function Home() {
       .select('*')
       .order('id', { ascending: true })
     if (error) setError(error.message)
-    else setTareas(data || [])
+    else {
+      setTareas(data || [])
+      // Cargar conteo de avances por tarea
+      const { data: avData } = await supabase.from('avances').select('tarea_id')
+      if (avData) {
+        const conteo = avData.reduce((acc, a) => {
+          acc[a.tarea_id] = (acc[a.tarea_id] || 0) + 1
+          return acc
+        }, {})
+        setConteoAvances(conteo)
+      }
+    }
     setLoading(false)
   }, [])
 
@@ -177,6 +189,7 @@ export default function Home() {
     if (!error) {
       setNuevoAvance({ fecha: new Date().toISOString().split('T')[0], descripcion: '' })
       fetchAvances(tareaActual.id)
+      setConteoAvances(prev => ({...prev, [tareaActual.id]: (prev[tareaActual.id] || 0) + 1}))
     }
     setSavingAvance(false)
   }
@@ -185,6 +198,7 @@ export default function Home() {
     if (!confirm('¿Eliminar este avance?')) return
     await supabase.from('avances').delete().eq('id', id)
     fetchAvances(tareaActual.id)
+    setConteoAvances(prev => ({...prev, [tareaActual.id]: Math.max((prev[tareaActual.id] || 1) - 1, 0)}))
   }
 
   const handleDelete = async (id) => {
@@ -339,8 +353,11 @@ export default function Home() {
                       <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">{t.area}</td>
                       <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
                         <button onClick={e => openAvances(e, t)}
-                          className="bg-green-100 hover:bg-green-200 text-green-700 font-bold rounded-full w-7 h-7 flex items-center justify-center text-lg leading-none"
-                          title="Ver/agregar avances">+</button>
+                          className="bg-green-100 hover:bg-green-200 text-green-700 font-bold rounded-full px-2 py-1 flex items-center gap-1 text-xs"
+                          title="Ver/agregar avances">
+                          <span className="text-base leading-none">+</span>
+                          {conteoAvances[t.id] > 0 && <span className="bg-green-600 text-white rounded-full px-1.5 py-0.5 text-xs">{conteoAvances[t.id]}</span>}
+                        </button>
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap" onClick={e => e.stopPropagation()}>
                         <div className="flex gap-1">
