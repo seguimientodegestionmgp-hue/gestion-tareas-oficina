@@ -321,11 +321,11 @@ export default function Home() {
                     <tr key={t.id} onClick={() => openEdit(t)}
                       className={`border-t hover:bg-gray-50 cursor-pointer ${t.estado==='Realizada' ? 'opacity-60' : ''}`}>
                       <td className="px-3 py-2 text-gray-400 text-xs">{idx+1}</td>
-                      <td className="px-3 py-2 whitespace-nowrap max-w-32 truncate">{t.reunion}</td>
+                      <td className="px-3 py-2 whitespace-nowrap max-w-44 truncate">{t.reunion}</td>
                       <td className="px-3 py-2 max-w-56">
                         <div className={t.estado==='Realizada' ? 'line-through text-gray-400' : ''}>{t.tarea}</div>
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap">{t.responsable}</td>
+                      <td className="px-3 py-2 max-w-28 truncate" title={t.responsable}>{t.responsable}</td>
                       <td className="px-3 py-2">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${PRIO_COLORS[t.prioridad]||''}`}>{t.prioridad}</span>
                       </td>
