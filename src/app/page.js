@@ -1,6 +1,11 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  'https://qhkzmiceieeiwxxcxwua.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFoa3ptaWNlaWVlaXd4eGN4d3VhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NjU1MjUsImV4cCI6MjA5NjA0MTUyNX0.Z3rLYpHJ8R8EZYRpuFGQVd3kxKR_5u4CWf-3LeYcb0E'
+)
 
 const PRIORIDADES = ['Alta', 'Media', 'Baja']
 const ESTADOS = ['Pendiente', 'En curso', 'Realizada', 'Bloqueada']
@@ -35,6 +40,7 @@ export default function Home() {
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('tareas')
   const [expandedObs, setExpandedObs] = useState(null)
+  const [error, setError] = useState(null)
 
   const fetchTareas = useCallback(async () => {
     setLoading(true)
@@ -42,7 +48,12 @@ export default function Home() {
       .from('tareas')
       .select('*')
       .order('id', { ascending: true })
-    if (!error) setTareas(data || [])
+    if (error) {
+      console.error('Error fetching:', error)
+      setError(error.message)
+    } else {
+      setTareas(data || [])
+    }
     setLoading(false)
   }, [])
 
@@ -69,7 +80,6 @@ export default function Home() {
     return matchSearch && matchEstado && matchPrio
   })
 
-  // Resumen
   const total = tareas.length
   const pendientes = tareas.filter(t => t.estado === 'Pendiente').length
   const enCurso = tareas.filter(t => t.estado === 'En curso').length
@@ -77,7 +87,6 @@ export default function Home() {
   const bloqueadas = tareas.filter(t => t.estado === 'Bloqueada').length
   const pct = total ? Math.round(realizadas / total * 100) : 0
 
-  // Resumen por reunión
   const porReunion = tareas.reduce((acc, t) => {
     if (!t.reunion) return acc
     if (!acc[t.reunion]) acc[t.reunion] = { total:0, pendiente:0, enCurso:0, realizada:0, bloqueada:0 }
@@ -89,7 +98,6 @@ export default function Home() {
     return acc
   }, {})
 
-  // Resumen por responsable
   const porResponsable = tareas.reduce((acc, t) => {
     if (!t.responsable) return acc
     if (!acc[t.responsable]) acc[t.responsable] = { total:0, pendiente:0, enCurso:0, realizada:0, bloqueada:0 }
@@ -101,36 +109,52 @@ export default function Home() {
     return acc
   }, {})
 
-  const openNew = () => { setForm(emptyForm); setEditTarea(null); setShowModal(true) }
-  const openEdit = (t) => { setForm({...t, fecha_venc: t.fecha_venc||'', fecha_real: t.fecha_real||''}); setEditTarea(t.id); setShowModal(true) }
+  const openNew = () => { setForm(emptyForm); setEditTarea(null); setError(null); setShowModal(true) }
+  const openEdit = (t) => { setForm({...t, fecha_venc: t.fecha_venc||'', fecha_real: t.fecha_real||''}); setEditTarea(t.id); setError(null); setShowModal(true) }
 
   const handleSave = async () => {
     setSaving(true)
-    const data = { ...form }
-    if (!data.fecha_venc) data.fecha_venc = null
-    if (!data.fecha_real) data.fecha_real = null
-    data.updated_at = new Date().toISOString()
-    if (data.estado === 'Realizada' && !data.fecha_real) {
-      data.fecha_real = new Date().toISOString().split('T')[0]
-    }
-    if (editTarea) {
-      await supabase.from('tareas').update(data).eq('id', editTarea)
-    } else {
-      await supabase.from('tareas').insert([data])
+    setError(null)
+    try {
+      const data = { ...form }
+      if (!data.fecha_venc) delete data.fecha_venc
+      if (!data.fecha_real) delete data.fecha_real
+      if (data.estado === 'Realizada' && !data.fecha_real) {
+        data.fecha_real = new Date().toISOString().split('T')[0]
+      }
+      delete data.id
+      delete data.created_at
+      delete data.updated_at
+
+      let result
+      if (editTarea) {
+        result = await supabase.from('tareas').update(data).eq('id', editTarea)
+      } else {
+        result = await supabase.from('tareas').insert([data])
+      }
+
+      if (result.error) {
+        console.error('Save error:', result.error)
+        setError(result.error.message)
+      } else {
+        setShowModal(false)
+        fetchTareas()
+      }
+    } catch (e) {
+      console.error('Exception:', e)
+      setError(e.message)
     }
     setSaving(false)
-    setShowModal(false)
-    fetchTareas()
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('¿Eliminár esta tarea?')) return
+    if (!confirm('¿Eliminar esta tarea?')) return
     await supabase.from('tareas').delete().eq('id', id)
     fetchTareas()
   }
 
   const handleEstadoChange = async (id, estado) => {
-    const upd = { estado, updated_at: new Date().toISOString() }
+    const upd = { estado }
     if (estado === 'Realizada') upd.fecha_real = new Date().toISOString().split('T')[0]
     else upd.fecha_real = null
     await supabase.from('tareas').update(upd).eq('id', id)
@@ -139,7 +163,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-blue-700 text-white px-6 py-4 shadow">
         <div className="max-w-screen-xl mx-auto flex items-center justify-between">
           <div>
@@ -153,7 +176,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="bg-white border-b">
         <div className="max-w-screen-xl mx-auto px-6 flex gap-1">
           {[['tareas','📋 Tareas'],['resumen','📊 Resumen']].map(([key,label]) => (
@@ -167,10 +189,7 @@ export default function Home() {
 
       <div className="max-w-screen-xl mx-auto px-6 py-6">
 
-        {/* ── TAB TAREAS ── */}
         {activeTab === 'tareas' && (<>
-
-          {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
             {[
               ['Total', total, 'bg-blue-50 text-blue-800'],
@@ -187,7 +206,6 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Buscador */}
           <div className="bg-white rounded-xl shadow-sm border p-4 mb-4">
             <div className="flex flex-wrap gap-3 items-center">
               <div className="flex-1 min-w-48">
@@ -222,19 +240,18 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Tabla */}
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
             {loading ? (
               <div className="text-center py-16 text-gray-400">Cargando...</div>
             ) : filtered.length === 0 ? (
               <div className="text-center py-16 text-gray-400">
-                {tareas.length === 0 ? 'No hay tareas. ¡Agregá la primera!' : 'No hay resultados para la búsqueda.'}
+                {tareas.length === 0 ? 'No hay tareas. ¡Agregá la primera!' : 'No hay resultados.'}
               </div>
             ) : (
               <table className="w-full text-sm">
                 <thead className="bg-blue-700 text-white">
                   <tr>
-                    {['#','Reunión','Tarea / Descripción','Responsable','Prioridad','Estado','Fecha Venc.','Fecha Realiz.','Observaciones','Área',''].map((h,i) => (
+                    {['#','Reunión','Tarea','Responsable','Prioridad','Estado','F.Venc','F.Real','Observaciones','Área',''].map((h,i) => (
                       <th key={i} className="px-3 py-3 text-left font-medium whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -243,9 +260,9 @@ export default function Home() {
                   {filtered.map((t, idx) => (
                     <tr key={t.id} className={`border-t hover:bg-gray-50 ${t.estado==='Realizada' ? 'opacity-60' : ''}`}>
                       <td className="px-3 py-2 text-gray-400 text-xs">{idx+1}</td>
-                      <td className="px-3 py-2 whitespace-nowrap max-w-32 truncate" title={t.reunion}>{t.reunion}</td>
+                      <td className="px-3 py-2 whitespace-nowrap max-w-32 truncate">{t.reunion}</td>
                       <td className="px-3 py-2 max-w-56">
-                        <div className={`${t.estado==='Realizada' ? 'line-through text-gray-400' : ''}`}>{t.tarea}</div>
+                        <div className={t.estado==='Realizada' ? 'line-through text-gray-400' : ''}>{t.tarea}</div>
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap">{t.responsable}</td>
                       <td className="px-3 py-2">
@@ -262,9 +279,7 @@ export default function Home() {
                       <td className="px-3 py-2 max-w-48">
                         {t.observaciones ? (
                           <div>
-                            <span className={expandedObs===t.id ? '' : 'line-clamp-2'}>
-                              {t.observaciones}
-                            </span>
+                            <span className={expandedObs===t.id ? '' : 'line-clamp-2'}>{t.observaciones}</span>
                             {t.observaciones.length > 80 && (
                               <button onClick={() => setExpandedObs(expandedObs===t.id ? null : t.id)}
                                 className="text-blue-500 text-xs mt-0.5 hover:underline">
@@ -277,10 +292,8 @@ export default function Home() {
                       <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">{t.area}</td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         <div className="flex gap-1">
-                          <button onClick={() => openEdit(t)}
-                            className="text-blue-500 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50 text-xs">✏️</button>
-                          <button onClick={() => handleDelete(t.id)}
-                            className="text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 text-xs">🗑️</button>
+                          <button onClick={() => openEdit(t)} className="text-blue-500 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50 text-xs">✏️</button>
+                          <button onClick={() => handleDelete(t.id)} className="text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 text-xs">🗑️</button>
                         </div>
                       </td>
                     </tr>
@@ -289,16 +302,11 @@ export default function Home() {
               </table>
             )}
           </div>
-          <div className="text-xs text-gray-400 mt-2 text-right">
-            {filtered.length} de {tareas.length} tareas
-          </div>
+          <div className="text-xs text-gray-400 mt-2 text-right">{filtered.length} de {tareas.length} tareas</div>
         </>)}
 
-        {/* ── TAB RESUMEN ── */}
         {activeTab === 'resumen' && (
           <div className="space-y-6">
-
-            {/* Métricas */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               {[
                 ['Total', total, 'bg-blue-50','text-blue-700'],
@@ -315,16 +323,11 @@ export default function Home() {
               ))}
             </div>
 
-            {/* Por reunión */}
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
               <div className="bg-blue-700 text-white px-4 py-3 font-semibold">Tareas por Reunión</div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600">
-                  <tr>
-                    {['Reunión','Total','Pendiente','En curso','Realizada','Bloqueada'].map(h => (
-                      <th key={h} className="px-4 py-2 text-left font-medium">{h}</th>
-                    ))}
-                  </tr>
+                  <tr>{['Reunión','Total','Pendiente','En curso','Realizada','Bloqueada'].map(h => <th key={h} className="px-4 py-2 text-left font-medium">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {Object.entries(porReunion).map(([reunion, d], i) => (
@@ -337,23 +340,16 @@ export default function Home() {
                       <td className="px-4 py-2"><span className="bg-red-100 text-red-800 px-2 py-0.5 rounded-full text-xs">{d.bloqueada}</span></td>
                     </tr>
                   ))}
-                  {Object.keys(porReunion).length === 0 && (
-                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">Sin datos</td></tr>
-                  )}
+                  {Object.keys(porReunion).length === 0 && <tr><td colSpan={6} className="text-center py-8 text-gray-400">Sin datos</td></tr>}
                 </tbody>
               </table>
             </div>
 
-            {/* Por responsable */}
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
               <div className="bg-blue-700 text-white px-4 py-3 font-semibold">Tareas por Responsable</div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600">
-                  <tr>
-                    {['Responsable','Total','Pendiente','En curso','Realizada','Bloqueada'].map(h => (
-                      <th key={h} className="px-4 py-2 text-left font-medium">{h}</th>
-                    ))}
-                  </tr>
+                  <tr>{['Responsable','Total','Pendiente','En curso','Realizada','Bloqueada'].map(h => <th key={h} className="px-4 py-2 text-left font-medium">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {Object.entries(porResponsable).map(([resp, d], i) => (
@@ -366,9 +362,7 @@ export default function Home() {
                       <td className="px-4 py-2"><span className="bg-red-100 text-red-800 px-2 py-0.5 rounded-full text-xs">{d.bloqueada}</span></td>
                     </tr>
                   ))}
-                  {Object.keys(porResponsable).length === 0 && (
-                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">Sin datos</td></tr>
-                  )}
+                  {Object.keys(porResponsable).length === 0 && <tr><td colSpan={6} className="text-center py-8 text-gray-400">Sin datos</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -376,7 +370,6 @@ export default function Home() {
         )}
       </div>
 
-      {/* Modal nueva/editar tarea */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-screen overflow-y-auto">
@@ -423,6 +416,11 @@ export default function Home() {
                 <input type="text" value={form.extra||''} onChange={e => setForm({...form,extra:e.target.value})}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
               </div>
+              {error && (
+                <div className="md:col-span-2 bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
+                  Error: {error}
+                </div>
+              )}
             </div>
             <div className="px-6 pb-6 flex justify-end gap-3">
               <button onClick={() => setShowModal(false)}
