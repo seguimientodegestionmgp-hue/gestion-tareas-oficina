@@ -163,7 +163,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-blue-700 text-white px-6 py-4 shadow">
+      <div className="bg-blue-700 text-white px-6 py-4 shadow sticky top-0 z-40">
         <div className="max-w-screen-xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">📋 Gestión de Tareas y Reuniones</h1>
@@ -176,7 +176,7 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="bg-white border-b">
+      <div className="bg-white border-b sticky top-16 z-30">
         <div className="max-w-screen-xl mx-auto px-6 flex gap-1">
           {[['tareas','📋 Tareas'],['resumen','📊 Resumen']].map(([key,label]) => (
             <button key={key} onClick={() => setActiveTab(key)}
