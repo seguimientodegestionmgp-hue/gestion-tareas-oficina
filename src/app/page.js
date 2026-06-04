@@ -393,7 +393,8 @@ export default function Home() {
               </button>
               {(search || filterEstados.length > 0 || filterPrios.length > 0) && (
                 <button onClick={() => { setSearch(''); setFilterEstados([]); setFilterPrios([]) }}
-                  className="text-sm text-gray-500 hover:text-red-500 border rounded-lg px-3 py-2">✕ Limpiar</button>}
+                  className="text-sm text-gray-500 hover:text-red-500 border rounded-lg px-3 py-2">✕ Limpiar</button>
+              )}
             </div>
           </div>
 
