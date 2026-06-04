@@ -39,8 +39,11 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [searchCol, setSearchCol] = useState('todas')
-  const [filterEstado, setFilterEstado] = useState('')
-  const [filterPrio, setFilterPrio] = useState('')
+  const [filterEstados, setFilterEstados] = useState([])
+  const [filterPrios, setFilterPrios] = useState([])
+  const [ocultarRealizadas, setOcultarRealizadas] = useState(false)
+  const [showEstadoMenu, setShowEstadoMenu] = useState(false)
+  const [showPrioMenu, setShowPrioMenu] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [showDetalle, setShowDetalle] = useState(false)
   const [showAvancesModal, setShowAvancesModal] = useState(false)
@@ -116,9 +119,10 @@ export default function Home() {
       searchCol === 'area' ? (t.area||'').toLowerCase().includes(q) :
       (t[searchCol]||'').toLowerCase().includes(q)
     )
-    const matchEstado = !filterEstado || t.estado === filterEstado
-    const matchPrio = !filterPrio || t.prioridad === filterPrio
-    return matchSearch && matchEstado && matchPrio
+    const matchEstado = filterEstados.length === 0 || filterEstados.includes(t.estado)
+    const matchPrio = filterPrios.length === 0 || filterPrios.includes(t.prioridad)
+    const matchOcultar = !ocultarRealizadas || t.estado !== 'Realizada'
+    return matchSearch && matchEstado && matchPrio && matchOcultar
   })
 
   const total = tareas.length
@@ -346,18 +350,50 @@ export default function Home() {
                 <option value="responsable">Responsable</option>
                 <option value="area">Área</option>
               </select>
-              <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
-                <option value="">Todos los estados</option>
-                {ESTADOS.map(e => <option key={e}>{e}</option>)}
-              </select>
-              <select value={filterPrio} onChange={e => setFilterPrio(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
-                <option value="">Todas las prioridades</option>
-                {PRIORIDADES.map(p => <option key={p}>{p}</option>)}
-              </select>
-              {(search || filterEstado || filterPrio) && (
-                <button onClick={() => { setSearch(''); setFilterEstado(''); setFilterPrio('') }}
-                  className="text-sm text-gray-500 hover:text-red-500 border rounded-lg px-3 py-2">✕ Limpiar</button>
-              )}
+              {/* Filtro estados multiselect */}
+              <div className="relative">
+                <button onClick={() => { setShowEstadoMenu(v => !v); setShowPrioMenu(false) }}
+                  className={`border rounded-lg px-3 py-2 text-sm flex items-center gap-2 ${filterEstados.length > 0 ? 'border-blue-400 bg-blue-50 text-blue-700' : ''}`}>
+                  Estado {filterEstados.length > 0 ? `(${filterEstados.length})` : ''} ▾
+                </button>
+                {showEstadoMenu && (
+                  <div className="absolute top-10 left-0 bg-white border rounded-xl shadow-lg z-20 min-w-44 py-2">
+                    {ESTADOS.map(e => (
+                      <label key={e} className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm">
+                        <input type="checkbox" checked={filterEstados.includes(e)}
+                          onChange={() => setFilterEstados(prev => prev.includes(e) ? prev.filter(x => x !== e) : [...prev, e])} />
+                        {e}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Filtro prioridad multiselect */}
+              <div className="relative">
+                <button onClick={() => { setShowPrioMenu(v => !v); setShowEstadoMenu(false) }}
+                  className={`border rounded-lg px-3 py-2 text-sm flex items-center gap-2 ${filterPrios.length > 0 ? 'border-blue-400 bg-blue-50 text-blue-700' : ''}`}>
+                  Prioridad {filterPrios.length > 0 ? `(${filterPrios.length})` : ''} ▾
+                </button>
+                {showPrioMenu && (
+                  <div className="absolute top-10 left-0 bg-white border rounded-xl shadow-lg z-20 min-w-36 py-2">
+                    {PRIORIDADES.map(p => (
+                      <label key={p} className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm">
+                        <input type="checkbox" checked={filterPrios.includes(p)}
+                          onChange={() => setFilterPrios(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])} />
+                        {p}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Toggle ocultar realizadas */}
+              <button onClick={() => setOcultarRealizadas(v => !v)}
+                className={`border rounded-lg px-3 py-2 text-sm flex items-center gap-2 ${ocultarRealizadas ? 'border-green-400 bg-green-50 text-green-700' : 'text-gray-500'}`}>
+                {ocultarRealizadas ? '👁 Mostrar realizadas' : '🙈 Ocultar realizadas'}
+              </button>
+              {(search || filterEstados.length > 0 || filterPrios.length > 0) && (
+                <button onClick={() => { setSearch(''); setFilterEstados([]); setFilterPrios([]) }}
+                  className="text-sm text-gray-500 hover:text-red-500 border rounded-lg px-3 py-2">✕ Limpiar</button>}
             </div>
           </div>
 
