@@ -9,6 +9,8 @@ const supabase = createClient(
 
 const PRIORIDADES = ['Alta', 'Media', 'Baja']
 const ESTADOS = ['Pendiente', 'En curso', 'Realizada', 'Bloqueada']
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
 
 const ESTADO_COLORS = {
   'Pendiente': 'bg-yellow-100 text-yellow-800',
@@ -27,6 +29,15 @@ const emptyForm = {
   estado: 'Pendiente', fecha_venc: '', fecha_real: '', observaciones: '', area: '', extra: ''
 }
 
+const emptyReunionForm = {
+  fecha: new Date().toISOString().split('T')[0],
+  hora: '',
+  tema: '',
+  descripcion: '',
+  participantes: '',
+  lugar: ''
+}
+
 export default function Home() {
   const [tareas, setTareas] = useState([])
   const [loading, setLoading] = useState(true)
@@ -36,6 +47,9 @@ export default function Home() {
   const [filterPrio, setFilterPrio] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [showAvancesModal, setShowAvancesModal] = useState(false)
+  const [showCalendario, setShowCalendario] = useState(false)
+  const [showReunionModal, setShowReunionModal] = useState(false)
+  const [showReunionDetalle, setShowReunionDetalle] = useState(false)
   const [editTarea, setEditTarea] = useState(null)
   const [tareaActual, setTareaActual] = useState(null)
   const [form, setForm] = useState(emptyForm)
@@ -48,17 +62,22 @@ export default function Home() {
   const [nuevoAvance, setNuevoAvance] = useState({ fecha: new Date().toISOString().split('T')[0], descripcion: '' })
   const [savingAvance, setSavingAvance] = useState(false)
   const [conteoAvances, setConteoAvances] = useState({})
+  // Calendario
+  const [reuniones, setReuniones] = useState([])
+  const [mesActual, setMesActual] = useState(new Date().getMonth())
+  const [anioActual, setAnioActual] = useState(new Date().getFullYear())
+  const [reunionForm, setReunionForm] = useState(emptyReunionForm)
+  const [editReunion, setEditReunion] = useState(null)
+  const [reunionSeleccionada, setReunionSeleccionada] = useState(null)
+  const [diaSeleccionado, setDiaSeleccionado] = useState(null)
+  const [savingReunion, setSavingReunion] = useState(false)
 
   const fetchTareas = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('tareas')
-      .select('*')
-      .order('id', { ascending: true })
+    const { data, error } = await supabase.from('tareas').select('*').order('id', { ascending: true })
     if (error) setError(error.message)
     else {
       setTareas(data || [])
-      // Cargar conteo de avances por tarea
       const { data: avData } = await supabase.from('avances').select('tarea_id')
       if (avData) {
         const conteo = avData.reduce((acc, a) => {
@@ -71,15 +90,17 @@ export default function Home() {
     setLoading(false)
   }, [])
 
+  const fetchReuniones = useCallback(async () => {
+    const { data } = await supabase.from('reuniones').select('*').order('fecha').order('hora')
+    setReuniones(data || [])
+  }, [])
+
   useEffect(() => { fetchTareas() }, [fetchTareas])
+  useEffect(() => { if (showCalendario) fetchReuniones() }, [showCalendario, fetchReuniones])
 
   const fetchAvances = async (tareaId) => {
     setLoadingAvances(true)
-    const { data } = await supabase
-      .from('avances')
-      .select('*')
-      .eq('tarea_id', tareaId)
-      .order('fecha', { ascending: false })
+    const { data } = await supabase.from('avances').select('*').eq('tarea_id', tareaId).order('fecha', { ascending: false })
     setAvances(data || [])
     setLoadingAvances(false)
   }
@@ -134,6 +155,18 @@ export default function Home() {
     return acc
   }, {})
 
+  // Calendario helpers
+  const getDiasDelMes = () => {
+    const primerDia = new Date(anioActual, mesActual, 1).getDay()
+    const diasEnMes = new Date(anioActual, mesActual + 1, 0).getDate()
+    return { primerDia, diasEnMes }
+  }
+
+  const getReunionesDelDia = (dia) => {
+    const fechaStr = `${anioActual}-${String(mesActual+1).padStart(2,'0')}-${String(dia).padStart(2,'0')}`
+    return reuniones.filter(r => r.fecha === fechaStr)
+  }
+
   const openNew = () => { setForm(emptyForm); setEditTarea(null); setError(null); setShowModal(true) }
   const openEdit = (t) => { setForm({...t, fecha_venc: t.fecha_venc||'', fecha_real: t.fecha_real||''}); setEditTarea(t.id); setError(null); setShowModal(true) }
 
@@ -145,46 +178,63 @@ export default function Home() {
     setShowAvancesModal(true)
   }
 
+  const openNuevaReunion = (dia = null) => {
+    const fecha = dia
+      ? `${anioActual}-${String(mesActual+1).padStart(2,'0')}-${String(dia).padStart(2,'0')}`
+      : new Date().toISOString().split('T')[0]
+    setReunionForm({...emptyReunionForm, fecha})
+    setEditReunion(null)
+    setShowReunionModal(true)
+  }
+
+  const openEditReunion = (r) => {
+    setReunionForm({...r, hora: r.hora||'', descripcion: r.descripcion||'', participantes: r.participantes||'', lugar: r.lugar||''})
+    setEditReunion(r.id)
+    setShowReunionDetalle(false)
+    setShowReunionModal(true)
+  }
+
   const handleSave = async () => {
-    setSaving(true)
-    setError(null)
+    setSaving(true); setError(null)
     try {
       const data = { ...form }
       if (!data.fecha_venc) delete data.fecha_venc
       if (!data.fecha_real) delete data.fecha_real
-      if (data.estado === 'Realizada' && !data.fecha_real) {
-        data.fecha_real = new Date().toISOString().split('T')[0]
-      }
-      delete data.id
-      delete data.created_at
-      delete data.updated_at
-
-      let result
-      if (editTarea) {
-        result = await supabase.from('tareas').update(data).eq('id', editTarea)
-      } else {
-        result = await supabase.from('tareas').insert([data])
-      }
-
-      if (result.error) {
-        setError(result.error.message)
-      } else {
-        setShowModal(false)
-        fetchTareas()
-      }
-    } catch (e) {
-      setError(e.message)
-    }
+      if (data.estado === 'Realizada' && !data.fecha_real) data.fecha_real = new Date().toISOString().split('T')[0]
+      delete data.id; delete data.created_at; delete data.updated_at
+      const result = editTarea
+        ? await supabase.from('tareas').update(data).eq('id', editTarea)
+        : await supabase.from('tareas').insert([data])
+      if (result.error) setError(result.error.message)
+      else { setShowModal(false); fetchTareas() }
+    } catch (e) { setError(e.message) }
     setSaving(false)
+  }
+
+  const handleSaveReunion = async () => {
+    if (!reunionForm.tema.trim() || !reunionForm.fecha) return
+    setSavingReunion(true)
+    const data = { ...reunionForm }
+    if (!data.hora) delete data.hora
+    const result = editReunion
+      ? await supabase.from('reuniones').update(data).eq('id', editReunion)
+      : await supabase.from('reuniones').insert([data])
+    if (!result.error) { setShowReunionModal(false); fetchReuniones() }
+    setSavingReunion(false)
+  }
+
+  const handleDeleteReunion = async (id) => {
+    if (!confirm('¿Eliminar esta reunión?')) return
+    await supabase.from('reuniones').delete().eq('id', id)
+    setShowReunionDetalle(false)
+    fetchReuniones()
   }
 
   const handleSaveAvance = async () => {
     if (!nuevoAvance.descripcion.trim()) return
     setSavingAvance(true)
     const { error } = await supabase.from('avances').insert([{
-      tarea_id: tareaActual.id,
-      fecha: nuevoAvance.fecha,
-      descripcion: nuevoAvance.descripcion.trim()
+      tarea_id: tareaActual.id, fecha: nuevoAvance.fecha, descripcion: nuevoAvance.descripcion.trim()
     }])
     if (!error) {
       setNuevoAvance({ fecha: new Date().toISOString().split('T')[0], descripcion: '' })
@@ -217,24 +267,37 @@ export default function Home() {
   }
 
   const formatFecha = (f) => f ? new Date(f+'T00:00:00').toLocaleDateString('es-AR') : '—'
+  const { primerDia, diasEnMes } = getDiasDelMes()
+  const hoy = new Date()
+
+  // Próximas reuniones (lista)
+  const proximasReuniones = reuniones
+    .filter(r => r.fecha >= new Date().toISOString().split('T')[0])
+    .slice(0, 5)
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header sticky */}
+      {/* Header */}
       <div className="bg-blue-700 text-white px-6 py-4 shadow" style={{position:'sticky',top:0,zIndex:40}}>
         <div className="max-w-screen-xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">📋 Gestión de Tareas y Reuniones</h1>
             <p className="text-blue-200 text-sm">Sistema de seguimiento de oficina</p>
           </div>
-          <button onClick={openNew}
-            className="bg-white text-blue-700 font-semibold px-4 py-2 rounded-lg hover:bg-blue-50 transition text-sm">
-            + Nueva tarea
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setShowCalendario(true)}
+              className="bg-blue-600 border border-blue-400 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-500 transition text-sm">
+              📅 Calendario
+            </button>
+            <button onClick={openNew}
+              className="bg-white text-blue-700 font-semibold px-4 py-2 rounded-lg hover:bg-blue-50 transition text-sm">
+              + Nueva tarea
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Tabs sticky */}
+      {/* Tabs */}
       <div className="bg-white border-b" style={{position:'sticky',top:'64px',zIndex:30}}>
         <div className="max-w-screen-xl mx-auto px-6 flex gap-1">
           {[['tareas','📋 Tareas'],['resumen','📊 Resumen']].map(([key,label]) => (
@@ -247,9 +310,7 @@ export default function Home() {
       </div>
 
       <div className="max-w-screen-xl mx-auto px-6 py-6">
-
         {activeTab === 'tareas' && (<>
-          {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
             {[
               ['Total', total, 'bg-blue-50 text-blue-800'],
@@ -266,7 +327,6 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Buscador */}
           <div className="bg-white rounded-xl shadow-sm border p-4 mb-4">
             <div className="flex flex-wrap gap-3 items-center">
               <div className="flex-1 min-w-48">
@@ -274,21 +334,18 @@ export default function Home() {
                   onChange={e => setSearch(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
               </div>
-              <select value={searchCol} onChange={e => setSearchCol(e.target.value)}
-                className="border rounded-lg px-3 py-2 text-sm bg-yellow-50">
+              <select value={searchCol} onChange={e => setSearchCol(e.target.value)} className="border rounded-lg px-3 py-2 text-sm bg-yellow-50">
                 <option value="todas">Todas las columnas</option>
                 <option value="reunion">Reunión</option>
                 <option value="tarea">Tarea</option>
                 <option value="responsable">Responsable</option>
                 <option value="area">Área</option>
               </select>
-              <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)}
-                className="border rounded-lg px-3 py-2 text-sm">
+              <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
                 <option value="">Todos los estados</option>
                 {ESTADOS.map(e => <option key={e}>{e}</option>)}
               </select>
-              <select value={filterPrio} onChange={e => setFilterPrio(e.target.value)}
-                className="border rounded-lg px-3 py-2 text-sm">
+              <select value={filterPrio} onChange={e => setFilterPrio(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
                 <option value="">Todas las prioridades</option>
                 {PRIORIDADES.map(p => <option key={p}>{p}</option>)}
               </select>
@@ -299,7 +356,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Tabla */}
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
             {loading ? (
               <div className="text-center py-16 text-gray-400">Cargando...</div>
@@ -341,12 +397,10 @@ export default function Home() {
                         {t.observaciones ? (
                           <div>
                             <span className={expandedObs===t.id ? '' : 'line-clamp-2'}>{t.observaciones}</span>
-                            {t.observaciones.length > 0 && (
-                              <button onClick={() => setExpandedObs(expandedObs===t.id ? null : t.id)}
-                                className="text-blue-500 text-xs mt-0.5 hover:underline">
-                                {expandedObs===t.id ? 'Ver menos' : 'Ver más'}
-                              </button>
-                            )}
+                            <button onClick={() => setExpandedObs(expandedObs===t.id ? null : t.id)}
+                              className="text-blue-500 text-xs mt-0.5 hover:underline">
+                              {expandedObs===t.id ? 'Ver menos' : 'Ver más'}
+                            </button>
                           </div>
                         ) : '—'}
                       </td>
@@ -391,7 +445,6 @@ export default function Home() {
                 </div>
               ))}
             </div>
-
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
               <div className="bg-blue-700 text-white px-4 py-3 font-semibold">Tareas por Reunión</div>
               <table className="w-full text-sm">
@@ -413,7 +466,6 @@ export default function Home() {
                 </tbody>
               </table>
             </div>
-
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
               <div className="bg-blue-700 text-white px-4 py-3 font-semibold">Tareas por Responsable</div>
               <table className="w-full text-sm">
@@ -439,6 +491,243 @@ export default function Home() {
         )}
       </div>
 
+      {/* ── MODAL CALENDARIO ── */}
+      {showCalendario && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl mt-4">
+            {/* Header calendario */}
+            <div className="bg-blue-700 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
+              <h2 className="font-bold text-lg">📅 Calendario de Reuniones</h2>
+              <div className="flex gap-2 items-center">
+                <button onClick={() => openNuevaReunion()}
+                  className="bg-white text-blue-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50 text-sm">
+                  + Nueva reunión
+                </button>
+                <button onClick={() => setShowCalendario(false)} className="text-white hover:text-blue-200 text-xl ml-2">✕</button>
+              </div>
+            </div>
+
+            <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Calendario */}
+              <div className="lg:col-span-2">
+                {/* Navegación mes */}
+                <div className="flex items-center justify-between mb-4">
+                  <button onClick={() => { if (mesActual === 0) { setMesActual(11); setAnioActual(a => a-1) } else setMesActual(m => m-1) }}
+                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">◀</button>
+                  <h3 className="font-bold text-lg text-gray-800">{MESES[mesActual]} {anioActual}</h3>
+                  <button onClick={() => { if (mesActual === 11) { setMesActual(0); setAnioActual(a => a+1) } else setMesActual(m => m+1) }}
+                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">▶</button>
+                </div>
+
+                {/* Días semana */}
+                <div className="grid grid-cols-7 mb-2">
+                  {DIAS.map(d => (
+                    <div key={d} className="text-center text-xs font-semibold text-gray-500 py-2">{d}</div>
+                  ))}
+                </div>
+
+                {/* Días del mes */}
+                <div className="grid grid-cols-7 gap-1">
+                  {Array.from({length: primerDia}).map((_, i) => <div key={`e${i}`} />)}
+                  {Array.from({length: diasEnMes}).map((_, i) => {
+                    const dia = i + 1
+                    const reunionesDia = getReunionesDelDia(dia)
+                    const esHoy = dia === hoy.getDate() && mesActual === hoy.getMonth() && anioActual === hoy.getFullYear()
+                    return (
+                      <div key={dia}
+                        onClick={() => { setDiaSeleccionado(dia); if (reunionesDia.length === 0) openNuevaReunion(dia) }}
+                        className={`min-h-16 p-1 rounded-lg border cursor-pointer hover:bg-blue-50 transition
+                          ${esHoy ? 'border-blue-500 bg-blue-50' : 'border-gray-100'}
+                          ${diaSeleccionado === dia ? 'ring-2 ring-blue-400' : ''}`}>
+                        <div className={`text-xs font-semibold mb-1 ${esHoy ? 'text-blue-700' : 'text-gray-700'}`}>{dia}</div>
+                        {reunionesDia.map(r => (
+                          <div key={r.id}
+                            onClick={e => { e.stopPropagation(); setReunionSeleccionada(r); setShowReunionDetalle(true) }}
+                            className="bg-blue-600 text-white text-xs rounded px-1 py-0.5 mb-0.5 truncate hover:bg-blue-700">
+                            {r.hora ? r.hora.slice(0,5)+' ' : ''}{r.tema}
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Panel lateral: próximas reuniones */}
+              <div>
+                <h3 className="font-bold text-gray-700 mb-3">📌 Próximas reuniones</h3>
+                {proximasReuniones.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400 border rounded-xl text-sm">
+                    No hay reuniones próximas
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {proximasReuniones.map(r => (
+                      <div key={r.id}
+                        onClick={() => { setReunionSeleccionada(r); setShowReunionDetalle(true) }}
+                        className="border rounded-xl p-3 hover:bg-blue-50 cursor-pointer transition">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">
+                            {formatFecha(r.fecha)}
+                          </span>
+                          {r.hora && <span className="text-xs text-gray-500">🕐 {r.hora.slice(0,5)}</span>}
+                        </div>
+                        <p className="font-semibold text-sm text-gray-800">{r.tema}</p>
+                        {r.lugar && <p className="text-xs text-gray-500 mt-0.5">📍 {r.lugar}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Lista completa del mes */}
+                <h3 className="font-bold text-gray-700 mb-3 mt-6">📋 Este mes</h3>
+                {reuniones.filter(r => {
+                  const f = new Date(r.fecha+'T00:00:00')
+                  return f.getMonth() === mesActual && f.getFullYear() === anioActual
+                }).length === 0 ? (
+                  <div className="text-center py-4 text-gray-400 border rounded-xl text-sm">Sin reuniones este mes</div>
+                ) : (
+                  <div className="space-y-2">
+                    {reuniones.filter(r => {
+                      const f = new Date(r.fecha+'T00:00:00')
+                      return f.getMonth() === mesActual && f.getFullYear() === anioActual
+                    }).map(r => (
+                      <div key={r.id}
+                        onClick={() => { setReunionSeleccionada(r); setShowReunionDetalle(true) }}
+                        className="border rounded-lg p-2 hover:bg-blue-50 cursor-pointer transition flex justify-between items-center">
+                        <div>
+                          <p className="text-xs font-semibold text-gray-800">{r.tema}</p>
+                          <p className="text-xs text-gray-500">{formatFecha(r.fecha)}{r.hora ? ' · '+r.hora.slice(0,5) : ''}</p>
+                        </div>
+                        <span className="text-gray-400 text-xs">▶</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal detalle reunión */}
+      {showReunionDetalle && reunionSeleccionada && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="bg-blue-700 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
+              <h2 className="font-bold text-lg">📅 Detalle de reunión</h2>
+              <button onClick={() => setShowReunionDetalle(false)} className="text-white hover:text-blue-200 text-xl">✕</button>
+            </div>
+            <div className="p-6 space-y-3">
+              <div>
+                <p className="text-xs text-gray-500 font-semibold">TEMA</p>
+                <p className="text-lg font-bold text-gray-800">{reunionSeleccionada.tema}</p>
+              </div>
+              <div className="flex gap-4">
+                <div>
+                  <p className="text-xs text-gray-500 font-semibold">FECHA</p>
+                  <p className="text-sm text-gray-700">{formatFecha(reunionSeleccionada.fecha)}</p>
+                </div>
+                {reunionSeleccionada.hora && (
+                  <div>
+                    <p className="text-xs text-gray-500 font-semibold">HORA</p>
+                    <p className="text-sm text-gray-700">{reunionSeleccionada.hora.slice(0,5)}</p>
+                  </div>
+                )}
+              </div>
+              {reunionSeleccionada.lugar && (
+                <div>
+                  <p className="text-xs text-gray-500 font-semibold">LUGAR</p>
+                  <p className="text-sm text-gray-700">📍 {reunionSeleccionada.lugar}</p>
+                </div>
+              )}
+              {reunionSeleccionada.participantes && (
+                <div>
+                  <p className="text-xs text-gray-500 font-semibold">PARTICIPANTES</p>
+                  <p className="text-sm text-gray-700">👥 {reunionSeleccionada.participantes}</p>
+                </div>
+              )}
+              {reunionSeleccionada.descripcion && (
+                <div>
+                  <p className="text-xs text-gray-500 font-semibold">DESCRIPCIÓN</p>
+                  <p className="text-sm text-gray-700">{reunionSeleccionada.descripcion}</p>
+                </div>
+              )}
+            </div>
+            <div className="px-6 pb-6 flex justify-between">
+              <button onClick={() => handleDeleteReunion(reunionSeleccionada.id)}
+                className="text-red-500 hover:text-red-700 text-sm border border-red-200 rounded-lg px-4 py-2 hover:bg-red-50">
+                🗑️ Eliminar
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setShowReunionDetalle(false)}
+                  className="border rounded-lg px-4 py-2 text-sm hover:bg-gray-50">Cerrar</button>
+                <button onClick={() => openEditReunion(reunionSeleccionada)}
+                  className="bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-blue-800">
+                  ✏️ Editar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal nueva/editar reunión */}
+      {showReunionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+            <div className="bg-blue-700 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
+              <h2 className="font-bold text-lg">{editReunion ? '✏️ Editar reunión' : '+ Nueva reunión'}</h2>
+              <button onClick={() => setShowReunionModal(false)} className="text-white hover:text-blue-200 text-xl">✕</button>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Tema *</label>
+                <input type="text" value={reunionForm.tema} onChange={e => setReunionForm({...reunionForm, tema: e.target.value})}
+                  placeholder="Ej: Reunión semanal de gestión"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Fecha *</label>
+                <input type="date" value={reunionForm.fecha} onChange={e => setReunionForm({...reunionForm, fecha: e.target.value})}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Hora</label>
+                <input type="time" value={reunionForm.hora} onChange={e => setReunionForm({...reunionForm, hora: e.target.value})}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Lugar</label>
+                <input type="text" value={reunionForm.lugar} onChange={e => setReunionForm({...reunionForm, lugar: e.target.value})}
+                  placeholder="Ej: Sala de reuniones"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Participantes</label>
+                <input type="text" value={reunionForm.participantes} onChange={e => setReunionForm({...reunionForm, participantes: e.target.value})}
+                  placeholder="Ej: Juan, María, Pedro"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Descripción</label>
+                <textarea value={reunionForm.descripcion} onChange={e => setReunionForm({...reunionForm, descripcion: e.target.value})}
+                  rows={3} placeholder="Agenda o notas previas..."
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none" />
+              </div>
+            </div>
+            <div className="px-6 pb-6 flex justify-end gap-3">
+              <button onClick={() => setShowReunionModal(false)}
+                className="border rounded-lg px-5 py-2 text-sm hover:bg-gray-50">Cancelar</button>
+              <button onClick={handleSaveReunion} disabled={savingReunion || !reunionForm.tema.trim()}
+                className="bg-blue-700 text-white rounded-lg px-5 py-2 text-sm font-semibold hover:bg-blue-800 disabled:opacity-50">
+                {savingReunion ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal nueva/editar tarea */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
@@ -448,14 +737,7 @@ export default function Home() {
               <button onClick={() => setShowModal(false)} className="text-white hover:text-blue-200 text-xl">✕</button>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[
-                ['reunion','Reunión','text'],
-                ['tarea','Tarea / Descripción','text'],
-                ['responsable','Responsable','text'],
-                ['area','Área / Dpto.','text'],
-                ['fecha_venc','Fecha Vencimiento','date'],
-                ['fecha_real','Fecha Realización','date'],
-              ].map(([field, label, type]) => (
+              {[['reunion','Reunión','text'],['tarea','Tarea / Descripción','text'],['responsable','Responsable','text'],['area','Área / Dpto.','text'],['fecha_venc','Fecha Vencimiento','date'],['fecha_real','Fecha Realización','date']].map(([field, label, type]) => (
                 <div key={field}>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
                   <input type={type} value={form[field]||''} onChange={e => setForm({...form,[field]:e.target.value})}
@@ -486,15 +768,10 @@ export default function Home() {
                 <input type="text" value={form.extra||''} onChange={e => setForm({...form,extra:e.target.value})}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
               </div>
-              {error && (
-                <div className="md:col-span-2 bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
-                  Error: {error}
-                </div>
-              )}
+              {error && <div className="md:col-span-2 bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">Error: {error}</div>}
             </div>
             <div className="px-6 pb-6 flex justify-end gap-3">
-              <button onClick={() => setShowModal(false)}
-                className="border rounded-lg px-5 py-2 text-sm hover:bg-gray-50">Cancelar</button>
+              <button onClick={() => setShowModal(false)} className="border rounded-lg px-5 py-2 text-sm hover:bg-gray-50">Cancelar</button>
               <button onClick={handleSave} disabled={saving}
                 className="bg-blue-700 text-white rounded-lg px-5 py-2 text-sm font-semibold hover:bg-blue-800 disabled:opacity-50">
                 {saving ? 'Guardando...' : 'Guardar'}
@@ -515,9 +792,7 @@ export default function Home() {
               </div>
               <button onClick={() => setShowAvancesModal(false)} className="text-white hover:text-green-200 text-xl">✕</button>
             </div>
-
             <div className="p-6">
-              {/* Formulario nuevo avance */}
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
                 <h3 className="font-semibold text-green-800 mb-3 text-sm">+ Agregar nuevo avance</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -528,30 +803,26 @@ export default function Home() {
                       className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Descripción del avance</label>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Descripción</label>
                     <div className="flex gap-2">
                       <input type="text" value={nuevoAvance.descripcion}
                         onChange={e => setNuevoAvance({...nuevoAvance, descripcion: e.target.value})}
                         onKeyDown={e => e.key === 'Enter' && handleSaveAvance()}
-                        placeholder="Describí el avance realizado..."
+                        placeholder="Describí el avance..."
                         className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
                       <button onClick={handleSaveAvance} disabled={savingAvance || !nuevoAvance.descripcion.trim()}
-                        className="bg-green-700 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-green-800 disabled:opacity-50 whitespace-nowrap">
+                        className="bg-green-700 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-green-800 disabled:opacity-50">
                         {savingAvance ? '...' : 'Agregar'}
                       </button>
                     </div>
                   </div>
                 </div>
               </div>
-
-              {/* Lista de avances */}
               <h3 className="font-semibold text-gray-700 mb-3 text-sm">Historial de avances</h3>
               {loadingAvances ? (
                 <div className="text-center py-8 text-gray-400">Cargando...</div>
               ) : avances.length === 0 ? (
-                <div className="text-center py-8 text-gray-400 border rounded-xl">
-                  No hay avances registrados. ¡Agregá el primero!
-                </div>
+                <div className="text-center py-8 text-gray-400 border rounded-xl">Sin avances registrados.</div>
               ) : (
                 <div className="space-y-3">
                   {avances.map((a, i) => (
@@ -562,11 +833,8 @@ export default function Home() {
                       </div>
                       <div className="flex-1 bg-gray-50 rounded-xl p-3 border">
                         <div className="flex justify-between items-start">
-                          <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
-                            {formatFecha(a.fecha)}
-                          </span>
-                          <button onClick={() => handleDeleteAvance(a.id)}
-                            className="text-gray-300 hover:text-red-500 text-xs ml-2">🗑️</button>
+                          <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">{formatFecha(a.fecha)}</span>
+                          <button onClick={() => handleDeleteAvance(a.id)} className="text-gray-300 hover:text-red-500 text-xs ml-2">🗑️</button>
                         </div>
                         <p className="text-sm text-gray-700 mt-2">{a.descripcion}</p>
                       </div>
