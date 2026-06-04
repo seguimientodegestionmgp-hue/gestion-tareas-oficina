@@ -31,11 +31,7 @@ const emptyForm = {
 
 const emptyReunionForm = {
   fecha: new Date().toISOString().split('T')[0],
-  hora: '',
-  tema: '',
-  descripcion: '',
-  participantes: '',
-  lugar: ''
+  hora: '', tema: '', descripcion: '', participantes: '', lugar: ''
 }
 
 export default function Home() {
@@ -46,6 +42,7 @@ export default function Home() {
   const [filterEstado, setFilterEstado] = useState('')
   const [filterPrio, setFilterPrio] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [showDetalle, setShowDetalle] = useState(false)
   const [showAvancesModal, setShowAvancesModal] = useState(false)
   const [showCalendario, setShowCalendario] = useState(false)
   const [showReunionModal, setShowReunionModal] = useState(false)
@@ -55,14 +52,12 @@ export default function Home() {
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('tareas')
-  const [expandedObs, setExpandedObs] = useState(null)
   const [error, setError] = useState(null)
   const [avances, setAvances] = useState([])
   const [loadingAvances, setLoadingAvances] = useState(false)
   const [nuevoAvance, setNuevoAvance] = useState({ fecha: new Date().toISOString().split('T')[0], descripcion: '' })
   const [savingAvance, setSavingAvance] = useState(false)
   const [conteoAvances, setConteoAvances] = useState({})
-  // Calendario
   const [reuniones, setReuniones] = useState([])
   const [mesActual, setMesActual] = useState(new Date().getMonth())
   const [anioActual, setAnioActual] = useState(new Date().getFullYear())
@@ -155,7 +150,6 @@ export default function Home() {
     return acc
   }, {})
 
-  // Calendario helpers
   const getDiasDelMes = () => {
     const primerDia = new Date(anioActual, mesActual, 1).getDay()
     const diasEnMes = new Date(anioActual, mesActual + 1, 0).getDate()
@@ -168,7 +162,21 @@ export default function Home() {
   }
 
   const openNew = () => { setForm(emptyForm); setEditTarea(null); setError(null); setShowModal(true) }
-  const openEdit = (t) => { setForm({...t, fecha_venc: t.fecha_venc||'', fecha_real: t.fecha_real||''}); setEditTarea(t.id); setError(null); setShowModal(true) }
+
+  const openDetalle = (t) => {
+    setTareaActual(t)
+    fetchAvances(t.id)
+    setNuevoAvance({ fecha: new Date().toISOString().split('T')[0], descripcion: '' })
+    setShowDetalle(true)
+  }
+
+  const openEdit = (t) => {
+    setForm({...t, fecha_venc: t.fecha_venc||'', fecha_real: t.fecha_real||''})
+    setEditTarea(t.id)
+    setError(null)
+    setShowDetalle(false)
+    setShowModal(true)
+  }
 
   const openAvances = (e, t) => {
     e.stopPropagation()
@@ -270,14 +278,12 @@ export default function Home() {
   const { primerDia, diasEnMes } = getDiasDelMes()
   const hoy = new Date()
 
-  // Próximas reuniones (lista)
   const proximasReuniones = reuniones
     .filter(r => r.fecha >= new Date().toISOString().split('T')[0])
     .slice(0, 5)
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-blue-700 text-white px-6 py-4 shadow" style={{position:'sticky',top:0,zIndex:40}}>
         <div className="max-w-screen-xl mx-auto flex items-center justify-between">
           <div>
@@ -297,7 +303,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="bg-white border-b" style={{position:'sticky',top:'64px',zIndex:30}}>
         <div className="max-w-screen-xl mx-auto px-6 flex gap-1">
           {[['tareas','📋 Tareas'],['resumen','📊 Resumen']].map(([key,label]) => (
@@ -374,7 +379,7 @@ export default function Home() {
                 </thead>
                 <tbody>
                   {filtered.map((t, idx) => (
-                    <tr key={t.id} onClick={() => openEdit(t)}
+                    <tr key={t.id} onClick={() => openDetalle(t)}
                       className={`border-t hover:bg-gray-50 cursor-pointer ${t.estado==='Realizada' ? 'opacity-60' : ''}`}>
                       <td className="px-3 py-2 text-gray-400 text-xs">{idx+1}</td>
                       <td className="px-3 py-2 max-w-44">{t.reunion}</td>
@@ -393,16 +398,8 @@ export default function Home() {
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap text-xs">{formatFecha(t.fecha_venc)}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-xs">{formatFecha(t.fecha_real)}</td>
-                      <td className="px-3 py-2 max-w-48" onClick={e => e.stopPropagation()}>
-                        {t.observaciones ? (
-                          <div>
-                            <span className={expandedObs===t.id ? '' : 'line-clamp-2'}>{t.observaciones}</span>
-                            <button onClick={() => setExpandedObs(expandedObs===t.id ? null : t.id)}
-                              className="text-blue-500 text-xs mt-0.5 hover:underline">
-                              {expandedObs===t.id ? 'Ver menos' : 'Ver más'}
-                            </button>
-                          </div>
-                        ) : '—'}
+                      <td className="px-3 py-2 max-w-48 text-xs text-gray-600">
+                        {t.observaciones ? t.observaciones.slice(0, 60) + (t.observaciones.length > 60 ? '...' : '') : '—'}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">{t.area}</td>
                       <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
@@ -491,42 +488,147 @@ export default function Home() {
         )}
       </div>
 
-      {/* ── MODAL CALENDARIO ── */}
+      {/* ── MODAL DETALLE TAREA ── */}
+      {showDetalle && tareaActual && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className={`text-white px-6 py-4 rounded-t-2xl flex justify-between items-start
+              ${tareaActual.estado==='Realizada' ? 'bg-green-700' :
+                tareaActual.estado==='Bloqueada' ? 'bg-red-700' :
+                tareaActual.estado==='En curso' ? 'bg-blue-700' : 'bg-yellow-600'}`}>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full bg-white bg-opacity-20`}>
+                    {tareaActual.estado}
+                  </span>
+                  <span className="text-xs opacity-75">{tareaActual.reunion}</span>
+                </div>
+                <h2 className="font-bold text-lg leading-tight">{tareaActual.tarea}</h2>
+              </div>
+              <button onClick={() => setShowDetalle(false)} className="text-white hover:opacity-75 text-xl ml-4">✕</button>
+            </div>
+
+            <div className="p-6">
+              {/* Info principal */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                {[
+                  ['👤 Responsable', tareaActual.responsable],
+                  ['🏢 Área', tareaActual.area],
+                  ['⚡ Prioridad', tareaActual.prioridad],
+                  ['📅 Fecha venc.', formatFecha(tareaActual.fecha_venc)],
+                  ['✅ Fecha realiz.', formatFecha(tareaActual.fecha_real)],
+                  ['📌 Extra', tareaActual.extra],
+                ].filter(([,v]) => v).map(([label, val]) => (
+                  <div key={label} className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-xs text-gray-500 mb-0.5">{label}</p>
+                    <p className="text-sm font-medium text-gray-800">{val}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Observaciones */}
+              {tareaActual.observaciones && (
+                <div className="bg-blue-50 rounded-xl p-4 mb-6">
+                  <p className="text-xs font-semibold text-blue-700 mb-2">📝 Observaciones</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{tareaActual.observaciones}</p>
+                </div>
+              )}
+
+              {/* Nuevo avance */}
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
+                <h3 className="font-semibold text-green-800 mb-3 text-sm">+ Agregar avance</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Fecha</label>
+                    <input type="date" value={nuevoAvance.fecha}
+                      onChange={e => setNuevoAvance({...nuevoAvance, fecha: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Descripción</label>
+                    <div className="flex gap-2">
+                      <input type="text" value={nuevoAvance.descripcion}
+                        onChange={e => setNuevoAvance({...nuevoAvance, descripcion: e.target.value})}
+                        onKeyDown={e => e.key === 'Enter' && handleSaveAvance()}
+                        placeholder="Describí el avance..."
+                        className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+                      <button onClick={handleSaveAvance} disabled={savingAvance || !nuevoAvance.descripcion.trim()}
+                        className="bg-green-700 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-green-800 disabled:opacity-50">
+                        {savingAvance ? '...' : 'Agregar'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Historial avances */}
+              <h3 className="font-semibold text-gray-700 mb-3 text-sm">📈 Historial de avances {avances.length > 0 && <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs">{avances.length}</span>}</h3>
+              {loadingAvances ? (
+                <div className="text-center py-6 text-gray-400">Cargando avances...</div>
+              ) : avances.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 border rounded-xl text-sm">Sin avances registrados aún.</div>
+              ) : (
+                <div className="space-y-3">
+                  {avances.map((a, i) => (
+                    <div key={a.id} className="flex gap-3 items-start">
+                      <div className="flex flex-col items-center">
+                        <div className="w-3 h-3 bg-green-500 rounded-full mt-1 flex-shrink-0"></div>
+                        {i < avances.length - 1 && <div className="w-0.5 bg-green-200 flex-1 mt-1" style={{minHeight:'24px'}}></div>}
+                      </div>
+                      <div className="flex-1 bg-gray-50 rounded-xl p-3 border">
+                        <div className="flex justify-between items-start">
+                          <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">{formatFecha(a.fecha)}</span>
+                          <button onClick={() => handleDeleteAvance(a.id)} className="text-gray-300 hover:text-red-500 text-xs ml-2">🗑️</button>
+                        </div>
+                        <p className="text-sm text-gray-700 mt-2">{a.descripcion}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 pb-6 flex justify-between items-center border-t pt-4">
+              <button onClick={() => handleDelete(tareaActual.id)}
+                className="text-red-500 hover:text-red-700 text-sm border border-red-200 rounded-lg px-4 py-2 hover:bg-red-50">
+                🗑️ Eliminar tarea
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setShowDetalle(false)}
+                  className="border rounded-lg px-4 py-2 text-sm hover:bg-gray-50">Cerrar</button>
+                <button onClick={() => openEdit(tareaActual)}
+                  className="bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-blue-800">
+                  ✏️ Editar tarea
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal calendario */}
       {showCalendario && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl mt-4">
-            {/* Header calendario */}
             <div className="bg-blue-700 text-white px-6 py-4 rounded-t-2xl flex justify-between items-center">
               <h2 className="font-bold text-lg">📅 Calendario de Reuniones</h2>
               <div className="flex gap-2 items-center">
-                <button onClick={() => openNuevaReunion()}
-                  className="bg-white text-blue-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50 text-sm">
-                  + Nueva reunión
-                </button>
+                <button onClick={() => openNuevaReunion()} className="bg-white text-blue-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50 text-sm">+ Nueva reunión</button>
                 <button onClick={() => setShowCalendario(false)} className="text-white hover:text-blue-200 text-xl ml-2">✕</button>
               </div>
             </div>
-
             <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Calendario */}
               <div className="lg:col-span-2">
-                {/* Navegación mes */}
                 <div className="flex items-center justify-between mb-4">
-                  <button onClick={() => { if (mesActual === 0) { setMesActual(11); setAnioActual(a => a-1) } else setMesActual(m => m-1) }}
-                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">◀</button>
+                  <button onClick={() => { if (mesActual === 0) { setMesActual(11); setAnioActual(a => a-1) } else setMesActual(m => m-1) }} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">◀</button>
                   <h3 className="font-bold text-lg text-gray-800">{MESES[mesActual]} {anioActual}</h3>
-                  <button onClick={() => { if (mesActual === 11) { setMesActual(0); setAnioActual(a => a+1) } else setMesActual(m => m+1) }}
-                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">▶</button>
+                  <button onClick={() => { if (mesActual === 11) { setMesActual(0); setAnioActual(a => a+1) } else setMesActual(m => m+1) }} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">▶</button>
                 </div>
-
-                {/* Días semana */}
                 <div className="grid grid-cols-7 mb-2">
-                  {DIAS.map(d => (
-                    <div key={d} className="text-center text-xs font-semibold text-gray-500 py-2">{d}</div>
-                  ))}
+                  {DIAS.map(d => <div key={d} className="text-center text-xs font-semibold text-gray-500 py-2">{d}</div>)}
                 </div>
-
-                {/* Días del mes */}
                 <div className="grid grid-cols-7 gap-1">
                   {Array.from({length: primerDia}).map((_, i) => <div key={`e${i}`} />)}
                   {Array.from({length: diasEnMes}).map((_, i) => {
@@ -534,15 +636,11 @@ export default function Home() {
                     const reunionesDia = getReunionesDelDia(dia)
                     const esHoy = dia === hoy.getDate() && mesActual === hoy.getMonth() && anioActual === hoy.getFullYear()
                     return (
-                      <div key={dia}
-                        onClick={() => { setDiaSeleccionado(dia); if (reunionesDia.length === 0) openNuevaReunion(dia) }}
-                        className={`min-h-16 p-1 rounded-lg border cursor-pointer hover:bg-blue-50 transition
-                          ${esHoy ? 'border-blue-500 bg-blue-50' : 'border-gray-100'}
-                          ${diaSeleccionado === dia ? 'ring-2 ring-blue-400' : ''}`}>
+                      <div key={dia} onClick={() => { setDiaSeleccionado(dia); if (reunionesDia.length === 0) openNuevaReunion(dia) }}
+                        className={`min-h-16 p-1 rounded-lg border cursor-pointer hover:bg-blue-50 transition ${esHoy ? 'border-blue-500 bg-blue-50' : 'border-gray-100'} ${diaSeleccionado === dia ? 'ring-2 ring-blue-400' : ''}`}>
                         <div className={`text-xs font-semibold mb-1 ${esHoy ? 'text-blue-700' : 'text-gray-700'}`}>{dia}</div>
                         {reunionesDia.map(r => (
-                          <div key={r.id}
-                            onClick={e => { e.stopPropagation(); setReunionSeleccionada(r); setShowReunionDetalle(true) }}
+                          <div key={r.id} onClick={e => { e.stopPropagation(); setReunionSeleccionada(r); setShowReunionDetalle(true) }}
                             className="bg-blue-600 text-white text-xs rounded px-1 py-0.5 mb-0.5 truncate hover:bg-blue-700">
                             {r.hora ? r.hora.slice(0,5)+' ' : ''}{r.tema}
                           </div>
@@ -552,24 +650,17 @@ export default function Home() {
                   })}
                 </div>
               </div>
-
-              {/* Panel lateral: próximas reuniones */}
               <div>
                 <h3 className="font-bold text-gray-700 mb-3">📌 Próximas reuniones</h3>
                 {proximasReuniones.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400 border rounded-xl text-sm">
-                    No hay reuniones próximas
-                  </div>
+                  <div className="text-center py-8 text-gray-400 border rounded-xl text-sm">No hay reuniones próximas</div>
                 ) : (
                   <div className="space-y-3">
                     {proximasReuniones.map(r => (
-                      <div key={r.id}
-                        onClick={() => { setReunionSeleccionada(r); setShowReunionDetalle(true) }}
+                      <div key={r.id} onClick={() => { setReunionSeleccionada(r); setShowReunionDetalle(true) }}
                         className="border rounded-xl p-3 hover:bg-blue-50 cursor-pointer transition">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">
-                            {formatFecha(r.fecha)}
-                          </span>
+                          <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">{formatFecha(r.fecha)}</span>
                           {r.hora && <span className="text-xs text-gray-500">🕐 {r.hora.slice(0,5)}</span>}
                         </div>
                         <p className="font-semibold text-sm text-gray-800">{r.tema}</p>
@@ -578,22 +669,13 @@ export default function Home() {
                     ))}
                   </div>
                 )}
-
-                {/* Lista completa del mes */}
                 <h3 className="font-bold text-gray-700 mb-3 mt-6">📋 Este mes</h3>
-                {reuniones.filter(r => {
-                  const f = new Date(r.fecha+'T00:00:00')
-                  return f.getMonth() === mesActual && f.getFullYear() === anioActual
-                }).length === 0 ? (
+                {reuniones.filter(r => { const f = new Date(r.fecha+'T00:00:00'); return f.getMonth() === mesActual && f.getFullYear() === anioActual }).length === 0 ? (
                   <div className="text-center py-4 text-gray-400 border rounded-xl text-sm">Sin reuniones este mes</div>
                 ) : (
                   <div className="space-y-2">
-                    {reuniones.filter(r => {
-                      const f = new Date(r.fecha+'T00:00:00')
-                      return f.getMonth() === mesActual && f.getFullYear() === anioActual
-                    }).map(r => (
-                      <div key={r.id}
-                        onClick={() => { setReunionSeleccionada(r); setShowReunionDetalle(true) }}
+                    {reuniones.filter(r => { const f = new Date(r.fecha+'T00:00:00'); return f.getMonth() === mesActual && f.getFullYear() === anioActual }).map(r => (
+                      <div key={r.id} onClick={() => { setReunionSeleccionada(r); setShowReunionDetalle(true) }}
                         className="border rounded-lg p-2 hover:bg-blue-50 cursor-pointer transition flex justify-between items-center">
                         <div>
                           <p className="text-xs font-semibold text-gray-800">{r.tema}</p>
@@ -619,53 +701,20 @@ export default function Home() {
               <button onClick={() => setShowReunionDetalle(false)} className="text-white hover:text-blue-200 text-xl">✕</button>
             </div>
             <div className="p-6 space-y-3">
-              <div>
-                <p className="text-xs text-gray-500 font-semibold">TEMA</p>
-                <p className="text-lg font-bold text-gray-800">{reunionSeleccionada.tema}</p>
-              </div>
+              <div><p className="text-xs text-gray-500 font-semibold">TEMA</p><p className="text-lg font-bold text-gray-800">{reunionSeleccionada.tema}</p></div>
               <div className="flex gap-4">
-                <div>
-                  <p className="text-xs text-gray-500 font-semibold">FECHA</p>
-                  <p className="text-sm text-gray-700">{formatFecha(reunionSeleccionada.fecha)}</p>
-                </div>
-                {reunionSeleccionada.hora && (
-                  <div>
-                    <p className="text-xs text-gray-500 font-semibold">HORA</p>
-                    <p className="text-sm text-gray-700">{reunionSeleccionada.hora.slice(0,5)}</p>
-                  </div>
-                )}
+                <div><p className="text-xs text-gray-500 font-semibold">FECHA</p><p className="text-sm text-gray-700">{formatFecha(reunionSeleccionada.fecha)}</p></div>
+                {reunionSeleccionada.hora && <div><p className="text-xs text-gray-500 font-semibold">HORA</p><p className="text-sm text-gray-700">{reunionSeleccionada.hora.slice(0,5)}</p></div>}
               </div>
-              {reunionSeleccionada.lugar && (
-                <div>
-                  <p className="text-xs text-gray-500 font-semibold">LUGAR</p>
-                  <p className="text-sm text-gray-700">📍 {reunionSeleccionada.lugar}</p>
-                </div>
-              )}
-              {reunionSeleccionada.participantes && (
-                <div>
-                  <p className="text-xs text-gray-500 font-semibold">PARTICIPANTES</p>
-                  <p className="text-sm text-gray-700">👥 {reunionSeleccionada.participantes}</p>
-                </div>
-              )}
-              {reunionSeleccionada.descripcion && (
-                <div>
-                  <p className="text-xs text-gray-500 font-semibold">DESCRIPCIÓN</p>
-                  <p className="text-sm text-gray-700">{reunionSeleccionada.descripcion}</p>
-                </div>
-              )}
+              {reunionSeleccionada.lugar && <div><p className="text-xs text-gray-500 font-semibold">LUGAR</p><p className="text-sm text-gray-700">📍 {reunionSeleccionada.lugar}</p></div>}
+              {reunionSeleccionada.participantes && <div><p className="text-xs text-gray-500 font-semibold">PARTICIPANTES</p><p className="text-sm text-gray-700">👥 {reunionSeleccionada.participantes}</p></div>}
+              {reunionSeleccionada.descripcion && <div><p className="text-xs text-gray-500 font-semibold">DESCRIPCIÓN</p><p className="text-sm text-gray-700">{reunionSeleccionada.descripcion}</p></div>}
             </div>
             <div className="px-6 pb-6 flex justify-between">
-              <button onClick={() => handleDeleteReunion(reunionSeleccionada.id)}
-                className="text-red-500 hover:text-red-700 text-sm border border-red-200 rounded-lg px-4 py-2 hover:bg-red-50">
-                🗑️ Eliminar
-              </button>
+              <button onClick={() => handleDeleteReunion(reunionSeleccionada.id)} className="text-red-500 hover:text-red-700 text-sm border border-red-200 rounded-lg px-4 py-2 hover:bg-red-50">🗑️ Eliminar</button>
               <div className="flex gap-2">
-                <button onClick={() => setShowReunionDetalle(false)}
-                  className="border rounded-lg px-4 py-2 text-sm hover:bg-gray-50">Cerrar</button>
-                <button onClick={() => openEditReunion(reunionSeleccionada)}
-                  className="bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-blue-800">
-                  ✏️ Editar
-                </button>
+                <button onClick={() => setShowReunionDetalle(false)} className="border rounded-lg px-4 py-2 text-sm hover:bg-gray-50">Cerrar</button>
+                <button onClick={() => openEditReunion(reunionSeleccionada)} className="bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-blue-800">✏️ Editar</button>
               </div>
             </div>
           </div>
@@ -717,8 +766,7 @@ export default function Home() {
               </div>
             </div>
             <div className="px-6 pb-6 flex justify-end gap-3">
-              <button onClick={() => setShowReunionModal(false)}
-                className="border rounded-lg px-5 py-2 text-sm hover:bg-gray-50">Cancelar</button>
+              <button onClick={() => setShowReunionModal(false)} className="border rounded-lg px-5 py-2 text-sm hover:bg-gray-50">Cancelar</button>
               <button onClick={handleSaveReunion} disabled={savingReunion || !reunionForm.tema.trim()}
                 className="bg-blue-700 text-white rounded-lg px-5 py-2 text-sm font-semibold hover:bg-blue-800 disabled:opacity-50">
                 {savingReunion ? 'Guardando...' : 'Guardar'}
@@ -781,7 +829,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Modal avances */}
+      {/* Modal avances (desde botón +) */}
       {showAvancesModal && tareaActual && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-screen overflow-y-auto">
@@ -798,8 +846,7 @@ export default function Home() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1">Fecha</label>
-                    <input type="date" value={nuevoAvance.fecha}
-                      onChange={e => setNuevoAvance({...nuevoAvance, fecha: e.target.value})}
+                    <input type="date" value={nuevoAvance.fecha} onChange={e => setNuevoAvance({...nuevoAvance, fecha: e.target.value})}
                       className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
                   </div>
                   <div className="md:col-span-2">
