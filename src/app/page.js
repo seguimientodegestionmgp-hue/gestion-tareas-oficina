@@ -31,7 +31,7 @@ const emptyForm = {
 
 const emptyReunionForm = {
   fecha: new Date().toISOString().split('T')[0],
-  hora: '', tema: '', descripcion: '', participantes: '', lugar: ''
+  hora: '', tema: '', descripcion: '', participantes: '', lugar: '', realizada: false
 }
 
 export default function Home() {
@@ -678,8 +678,8 @@ export default function Home() {
                         <div className={`text-xs font-semibold mb-1 ${esHoy ? 'text-blue-700' : 'text-gray-700'}`}>{dia}</div>
                         {reunionesDia.map(r => (
                           <div key={r.id} onClick={e => { e.stopPropagation(); setReunionSeleccionada(r); setShowReunionDetalle(true) }}
-                            className="bg-blue-600 text-white text-xs rounded px-1 py-0.5 mb-0.5 truncate hover:bg-blue-700">
-                            {r.hora ? r.hora.slice(0,5)+' ' : ''}{r.tema}
+                            className={`text-white text-xs rounded px-1 py-0.5 mb-0.5 truncate ${r.realizada ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                            {r.realizada ? '✅ ' : ''}{r.hora ? r.hora.slice(0,5)+' ' : ''}{r.tema}
                           </div>
                         ))}
                       </div>
@@ -700,7 +700,7 @@ export default function Home() {
                           <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">{formatFecha(r.fecha)}</span>
                           {r.hora && <span className="text-xs text-gray-500">🕐 {r.hora.slice(0,5)}</span>}
                         </div>
-                        <p className="font-semibold text-sm text-gray-800">{r.tema}</p>
+                        <p className={`font-semibold text-sm ${r.realizada ? 'line-through text-gray-400' : 'text-gray-800'}`}>{r.realizada ? '✅ ' : ''}{r.tema}</p>
                         {r.lugar && <p className="text-xs text-gray-500 mt-0.5">📍 {r.lugar}</p>}
                       </div>
                     ))}
@@ -715,7 +715,7 @@ export default function Home() {
                       <div key={r.id} onClick={() => { setReunionSeleccionada(r); setShowReunionDetalle(true) }}
                         className="border rounded-lg p-2 hover:bg-blue-50 cursor-pointer transition flex justify-between items-center">
                         <div>
-                          <p className="text-xs font-semibold text-gray-800">{r.tema}</p>
+                          <p className={`text-xs font-semibold ${r.realizada ? 'line-through text-gray-400' : 'text-gray-800'}`}>{r.realizada ? '✅ ' : ''}{r.tema}</p>
                           <p className="text-xs text-gray-500">{formatFecha(r.fecha)}{r.hora ? ' · '+r.hora.slice(0,5) : ''}</p>
                         </div>
                         <span className="text-gray-400 text-xs">▶</span>
@@ -751,6 +751,14 @@ export default function Home() {
               <button onClick={() => handleDeleteReunion(reunionSeleccionada.id)} className="text-red-500 hover:text-red-700 text-sm border border-red-200 rounded-lg px-4 py-2 hover:bg-red-50">🗑️ Eliminar</button>
               <div className="flex gap-2">
                 <button onClick={() => setShowReunionDetalle(false)} className="border rounded-lg px-4 py-2 text-sm hover:bg-gray-50">Cerrar</button>
+                <button onClick={async () => {
+                  await supabase.from('reuniones').update({realizada: !reunionSeleccionada.realizada}).eq('id', reunionSeleccionada.id)
+                  setReunionSeleccionada({...reunionSeleccionada, realizada: !reunionSeleccionada.realizada})
+                  fetchReuniones()
+                }}
+                  className={`rounded-lg px-4 py-2 text-sm font-semibold ${reunionSeleccionada.realizada ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-green-600 text-white hover:bg-green-700'}`}>
+                  {reunionSeleccionada.realizada ? '↩ Desmarcar' : '✅ Marcar realizada'}
+                </button>
                 <button onClick={() => openEditReunion(reunionSeleccionada)} className="bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-blue-800">✏️ Editar</button>
               </div>
             </div>
