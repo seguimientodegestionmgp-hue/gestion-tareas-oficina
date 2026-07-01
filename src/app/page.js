@@ -60,6 +60,8 @@ export default function Home() {
   const [loadingAvances, setLoadingAvances] = useState(false)
   const [nuevoAvance, setNuevoAvance] = useState({ fecha: new Date().toISOString().split('T')[0], descripcion: '' })
   const [savingAvance, setSavingAvance] = useState(false)
+  const [editandoRespuesta, setEditandoRespuesta] = useState(null)
+  const [respuestaTemp, setRespuestaTemp] = useState('')
   const [conteoAvances, setConteoAvances] = useState({})
   const [reuniones, setReuniones] = useState([])
   const [mesActual, setMesActual] = useState(new Date().getMonth())
@@ -254,6 +256,12 @@ export default function Home() {
       setConteoAvances(prev => ({...prev, [tareaActual.id]: (prev[tareaActual.id] || 0) + 1}))
     }
     setSavingAvance(false)
+  }
+
+  const handleGuardarRespuesta = async (id) => {
+    await supabase.from('avances').update({ respuesta: respuestaTemp }).eq('id', id)
+    setEditandoRespuesta(null)
+    fetchAvances(tareaActual.id)
   }
 
   const handleDeleteAvance = async (id) => {
@@ -618,7 +626,36 @@ export default function Home() {
                           <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">{formatFecha(a.fecha)}</span>
                           <button onClick={() => handleDeleteAvance(a.id)} className="text-gray-300 hover:text-red-500 text-xs ml-2">🗑️</button>
                         </div>
-                        <p className="text-sm text-gray-700 mt-2">{a.descripcion}</p>
+                        <p className="text-sm text-gray-700 mt-2 font-medium">{a.descripcion}</p>
+                        {editandoRespuesta === a.id ? (
+                          <div className="mt-2">
+                            <textarea value={respuestaTemp} onChange={e => setRespuestaTemp(e.target.value)}
+                              rows={2} placeholder="Escribí el resultado o respuesta..."
+                              className="w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none bg-white" />
+                            <div className="flex gap-2 mt-1">
+                              <button onClick={() => handleGuardarRespuesta(a.id)}
+                                className="bg-blue-600 text-white text-xs px-3 py-1 rounded-lg hover:bg-blue-700">Guardar</button>
+                              <button onClick={() => setEditandoRespuesta(null)}
+                                className="text-gray-500 text-xs px-3 py-1 rounded-lg border hover:bg-gray-50">Cancelar</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-2">
+                            {a.respuesta ? (
+                              <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                                <p className="text-xs text-blue-600 font-semibold mb-0.5">↪ Resultado:</p>
+                                <p className="text-sm text-gray-700">{a.respuesta}</p>
+                                <button onClick={() => { setEditandoRespuesta(a.id); setRespuestaTemp(a.respuesta) }}
+                                  className="text-xs text-blue-500 hover:underline mt-1">Editar respuesta</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => { setEditandoRespuesta(a.id); setRespuestaTemp('') }}
+                                className="text-xs text-blue-500 hover:underline border border-blue-200 rounded-lg px-2 py-1 hover:bg-blue-50">
+                                + Agregar resultado
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -928,7 +965,36 @@ export default function Home() {
                           <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">{formatFecha(a.fecha)}</span>
                           <button onClick={() => handleDeleteAvance(a.id)} className="text-gray-300 hover:text-red-500 text-xs ml-2">🗑️</button>
                         </div>
-                        <p className="text-sm text-gray-700 mt-2">{a.descripcion}</p>
+                        <p className="text-sm text-gray-700 mt-2 font-medium">{a.descripcion}</p>
+                        {editandoRespuesta === a.id ? (
+                          <div className="mt-2">
+                            <textarea value={respuestaTemp} onChange={e => setRespuestaTemp(e.target.value)}
+                              rows={2} placeholder="Escribí el resultado o respuesta..."
+                              className="w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none bg-white" />
+                            <div className="flex gap-2 mt-1">
+                              <button onClick={() => handleGuardarRespuesta(a.id)}
+                                className="bg-blue-600 text-white text-xs px-3 py-1 rounded-lg hover:bg-blue-700">Guardar</button>
+                              <button onClick={() => setEditandoRespuesta(null)}
+                                className="text-gray-500 text-xs px-3 py-1 rounded-lg border hover:bg-gray-50">Cancelar</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-2">
+                            {a.respuesta ? (
+                              <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                                <p className="text-xs text-blue-600 font-semibold mb-0.5">↪ Resultado:</p>
+                                <p className="text-sm text-gray-700">{a.respuesta}</p>
+                                <button onClick={() => { setEditandoRespuesta(a.id); setRespuestaTemp(a.respuesta) }}
+                                  className="text-xs text-blue-500 hover:underline mt-1">Editar respuesta</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => { setEditandoRespuesta(a.id); setRespuestaTemp('') }}
+                                className="text-xs text-blue-500 hover:underline border border-blue-200 rounded-lg px-2 py-1 hover:bg-blue-50">
+                                + Agregar resultado
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
