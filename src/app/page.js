@@ -287,6 +287,13 @@ export default function Home() {
   }
 
   const formatFecha = (f) => f ? new Date(f+'T00:00:00').toLocaleDateString('es-AR') : '—'
+
+  const estaVencida = (t) => {
+    if (!t.fecha_venc) return false
+    if (t.estado === 'Realizada') return false
+    const hoyStr = new Date().toISOString().split('T')[0]
+    return t.fecha_venc < hoyStr
+  }
   const { primerDia, diasEnMes } = getDiasDelMes()
   const hoy = new Date()
 
@@ -425,7 +432,7 @@ export default function Home() {
                 <tbody>
                   {filtered.map((t, idx) => (
                     <tr key={t.id} onClick={() => openDetalle(t)}
-                      className={`border-t hover:bg-gray-50 cursor-pointer ${t.estado==='Realizada' ? 'opacity-60' : ''}`}>
+                      className={`border-t cursor-pointer ${t.estado==='Realizada' ? 'opacity-60 hover:bg-gray-50' : estaVencida(t) ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}>
                       <td className="px-3 py-2 text-gray-400 text-xs">{idx+1}</td>
                       <td className="px-3 py-2 max-w-44">{t.reunion}</td>
                       <td className="px-3 py-2 max-w-56">
@@ -441,7 +448,15 @@ export default function Home() {
                           {ESTADOS.map(e => <option key={e}>{e}</option>)}
                         </select>
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-xs">{formatFecha(t.fecha_venc)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs">
+                        {estaVencida(t) ? (
+                          <span className="flex items-center gap-1 text-red-600 font-semibold">
+                            ⚠️ {formatFecha(t.fecha_venc)}
+                          </span>
+                        ) : (
+                          formatFecha(t.fecha_venc)
+                        )}
+                      </td>
                       <td className="px-3 py-2 whitespace-nowrap text-xs">{formatFecha(t.fecha_real)}</td>
                       <td className="px-3 py-2 max-w-48 text-xs text-gray-600">
                         {t.observaciones ? t.observaciones.slice(0, 60) + (t.observaciones.length > 60 ? '...' : '') : '—'}
