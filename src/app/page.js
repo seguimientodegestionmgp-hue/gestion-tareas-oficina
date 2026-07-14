@@ -64,7 +64,7 @@ export default function Home() {
   const [respuestaTemp, setRespuestaTemp] = useState('')
   const [avanceItems, setAvanceItems] = useState({})
   const [nuevoItem, setNuevoItem] = useState({})
-  const [expandedAvance, setExpandedAvance] = useState(null)
+  const [expandedAvances, setExpandedAvances] = useState(new Set())
   const [conteoAvances, setConteoAvances] = useState({})
   const [reuniones, setReuniones] = useState([])
   const [mesActual, setMesActual] = useState(new Date().getMonth())
@@ -287,12 +287,16 @@ export default function Home() {
   }
 
   const toggleExpandAvance = (avanceId) => {
-    if (expandedAvance === avanceId) {
-      setExpandedAvance(null)
-    } else {
-      setExpandedAvance(avanceId)
-      fetchAvanceItems(avanceId)
-    }
+    setExpandedAvances(prev => {
+      const next = new Set(prev)
+      if (next.has(avanceId)) {
+        next.delete(avanceId)
+      } else {
+        next.add(avanceId)
+        fetchAvanceItems(avanceId)
+      }
+      return next
+    })
   }
 
   const itemColor = (estado) => ({
@@ -724,12 +728,12 @@ export default function Home() {
                         <div className="mt-2">
                           <button onClick={() => toggleExpandAvance(a.id)}
                             className="text-xs text-purple-600 hover:underline border border-purple-200 rounded-lg px-2 py-1 hover:bg-purple-50 flex items-center gap-1">
-                            {expandedAvance === a.id ? '▾' : '▸'} Cumplimientos parciales
+                            {expandedAvances.has(a.id) ? '▾' : '▸'} Cumplimientos parciales
                             {avanceItems[a.id] && avanceItems[a.id].length > 0 && (
                               <span className="bg-purple-100 text-purple-700 rounded-full px-1.5 text-xs">{avanceItems[a.id].length}</span>
                             )}
                           </button>
-                          {expandedAvance === a.id && (
+                          {expandedAvances.has(a.id) && (
                             <div className="mt-2 pl-2 border-l-2 border-purple-200 space-y-1.5">
                               {(avanceItems[a.id] || []).map(item => (
                                 <div key={item.id} className="flex items-center gap-2">
@@ -1100,12 +1104,12 @@ export default function Home() {
                         <div className="mt-2">
                           <button onClick={() => toggleExpandAvance(a.id)}
                             className="text-xs text-purple-600 hover:underline border border-purple-200 rounded-lg px-2 py-1 hover:bg-purple-50 flex items-center gap-1">
-                            {expandedAvance === a.id ? '▾' : '▸'} Cumplimientos parciales
+                            {expandedAvances.has(a.id) ? '▾' : '▸'} Cumplimientos parciales
                             {avanceItems[a.id] && avanceItems[a.id].length > 0 && (
                               <span className="bg-purple-100 text-purple-700 rounded-full px-1.5 text-xs">{avanceItems[a.id].length}</span>
                             )}
                           </button>
-                          {expandedAvance === a.id && (
+                          {expandedAvances.has(a.id) && (
                             <div className="mt-2 pl-2 border-l-2 border-purple-200 space-y-1.5">
                               {(avanceItems[a.id] || []).map(item => (
                                 <div key={item.id} className="flex items-center gap-2">
