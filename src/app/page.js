@@ -62,6 +62,9 @@ export default function Home() {
   const [savingAvance, setSavingAvance] = useState(false)
   const [editandoRespuesta, setEditandoRespuesta] = useState(null)
   const [respuestaTemp, setRespuestaTemp] = useState('')
+  const [avanceItems, setAvanceItems] = useState({})
+  const [nuevoItem, setNuevoItem] = useState({})
+  const [expandedAvance, setExpandedAvance] = useState(null)
   const [conteoAvances, setConteoAvances] = useState({})
   const [reuniones, setReuniones] = useState([])
   const [mesActual, setMesActual] = useState(new Date().getMonth())
@@ -257,6 +260,52 @@ export default function Home() {
     }
     setSavingAvance(false)
   }
+
+  const fetchAvanceItems = async (avanceId) => {
+    const { data } = await supabase.from('avance_items').select('*').eq('avance_id', avanceId).order('id')
+    setAvanceItems(prev => ({...prev, [avanceId]: data || []}))
+  }
+
+  const handleAddItem = async (avanceId) => {
+    const texto = (nuevoItem[avanceId] || '').trim()
+    if (!texto) return
+    await supabase.from('avance_items').insert([{ avance_id: avanceId, descripcion: texto, estado: 'Pendiente' }])
+    setNuevoItem(prev => ({...prev, [avanceId]: ''}))
+    fetchAvanceItems(avanceId)
+  }
+
+  const handleToggleItem = async (item) => {
+    const estados = ['Pendiente', 'Parcial', 'Cumplido']
+    const next = estados[(estados.indexOf(item.estado) + 1) % estados.length]
+    await supabase.from('avance_items').update({ estado: next }).eq('id', item.id)
+    fetchAvanceItems(item.avance_id)
+  }
+
+  const handleDeleteItem = async (item) => {
+    await supabase.from('avance_items').delete().eq('id', item.id)
+    fetchAvanceItems(item.avance_id)
+  }
+
+  const toggleExpandAvance = (avanceId) => {
+    if (expandedAvance === avanceId) {
+      setExpandedAvance(null)
+    } else {
+      setExpandedAvance(avanceId)
+      fetchAvanceItems(avanceId)
+    }
+  }
+
+  const itemColor = (estado) => ({
+    'Pendiente': 'bg-gray-100 text-gray-600',
+    'Parcial':   'bg-yellow-100 text-yellow-700',
+    'Cumplido':  'bg-green-100 text-green-700',
+  }[estado] || 'bg-gray-100 text-gray-600')
+
+  const itemIcon = (estado) => ({
+    'Pendiente': '⬜',
+    'Parcial':   '🔶',
+    'Cumplido':  '✅',
+  }[estado] || '⬜')
 
   const handleGuardarRespuesta = async (id) => {
     await supabase.from('avances').update({ respuesta: respuestaTemp }).eq('id', id)
@@ -671,6 +720,43 @@ export default function Home() {
                             )}
                           </div>
                         )}
+                        {/* Sub-items de cumplimiento */}
+                        <div className="mt-2">
+                          <button onClick={() => toggleExpandAvance(a.id)}
+                            className="text-xs text-purple-600 hover:underline border border-purple-200 rounded-lg px-2 py-1 hover:bg-purple-50 flex items-center gap-1">
+                            {expandedAvance === a.id ? '▾' : '▸'} Cumplimientos parciales
+                            {avanceItems[a.id] && avanceItems[a.id].length > 0 && (
+                              <span className="bg-purple-100 text-purple-700 rounded-full px-1.5 text-xs">{avanceItems[a.id].length}</span>
+                            )}
+                          </button>
+                          {expandedAvance === a.id && (
+                            <div className="mt-2 pl-2 border-l-2 border-purple-200 space-y-1.5">
+                              {(avanceItems[a.id] || []).map(item => (
+                                <div key={item.id} className="flex items-center gap-2">
+                                  <button onClick={() => handleToggleItem(item)}
+                                    className={`text-xs px-2 py-0.5 rounded-full font-medium cursor-pointer ${itemColor(item.estado)}`}
+                                    title="Clic para cambiar estado">
+                                    {itemIcon(item.estado)} {item.estado}
+                                  </button>
+                                  <span className={`text-sm flex-1 ${item.estado === 'Cumplido' ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                                    {item.descripcion}
+                                  </span>
+                                  <button onClick={() => handleDeleteItem(item)} className="text-gray-300 hover:text-red-500 text-xs">🗑️</button>
+                                </div>
+                              ))}
+                              <div className="flex gap-2 mt-1">
+                                <input type="text"
+                                  value={nuevoItem[a.id] || ''}
+                                  onChange={e => setNuevoItem(prev => ({...prev, [a.id]: e.target.value}))}
+                                  onKeyDown={e => e.key === 'Enter' && handleAddItem(a.id)}
+                                  placeholder="Agregar punto a cumplir..."
+                                  className="flex-1 border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300" />
+                                <button onClick={() => handleAddItem(a.id)}
+                                  className="bg-purple-600 text-white text-xs px-3 py-1 rounded-lg hover:bg-purple-700">+</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1010,6 +1096,43 @@ export default function Home() {
                             )}
                           </div>
                         )}
+                        {/* Sub-items de cumplimiento */}
+                        <div className="mt-2">
+                          <button onClick={() => toggleExpandAvance(a.id)}
+                            className="text-xs text-purple-600 hover:underline border border-purple-200 rounded-lg px-2 py-1 hover:bg-purple-50 flex items-center gap-1">
+                            {expandedAvance === a.id ? '▾' : '▸'} Cumplimientos parciales
+                            {avanceItems[a.id] && avanceItems[a.id].length > 0 && (
+                              <span className="bg-purple-100 text-purple-700 rounded-full px-1.5 text-xs">{avanceItems[a.id].length}</span>
+                            )}
+                          </button>
+                          {expandedAvance === a.id && (
+                            <div className="mt-2 pl-2 border-l-2 border-purple-200 space-y-1.5">
+                              {(avanceItems[a.id] || []).map(item => (
+                                <div key={item.id} className="flex items-center gap-2">
+                                  <button onClick={() => handleToggleItem(item)}
+                                    className={`text-xs px-2 py-0.5 rounded-full font-medium cursor-pointer ${itemColor(item.estado)}`}
+                                    title="Clic para cambiar estado">
+                                    {itemIcon(item.estado)} {item.estado}
+                                  </button>
+                                  <span className={`text-sm flex-1 ${item.estado === 'Cumplido' ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                                    {item.descripcion}
+                                  </span>
+                                  <button onClick={() => handleDeleteItem(item)} className="text-gray-300 hover:text-red-500 text-xs">🗑️</button>
+                                </div>
+                              ))}
+                              <div className="flex gap-2 mt-1">
+                                <input type="text"
+                                  value={nuevoItem[a.id] || ''}
+                                  onChange={e => setNuevoItem(prev => ({...prev, [a.id]: e.target.value}))}
+                                  onKeyDown={e => e.key === 'Enter' && handleAddItem(a.id)}
+                                  placeholder="Agregar punto a cumplir..."
+                                  className="flex-1 border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300" />
+                                <button onClick={() => handleAddItem(a.id)}
+                                  className="bg-purple-600 text-white text-xs px-3 py-1 rounded-lg hover:bg-purple-700">+</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
